@@ -46,3 +46,6 @@ yarn-error.*
 *.apk
 *.ipa
 
+# Claude Code local settings
+.claude/
+
