@@ -1,24 +1,62 @@
 {
   "expo": {
-    "name": "Game",
-    "slug": "Game",
+    "name": "Floodlings",
+    "slug": "ColorFill",
     "version": "1.0.0",
     "orientation": "portrait",
+    "scheme": "colorflood",
     "icon": "./assets/icon.png",
-    "userInterfaceStyle": "light",
+    "userInterfaceStyle": "automatic",
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": false,
+      "bundleIdentifier": "com.amuletstudios.colorfill",
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false
+      }
     },
     "android": {
-      "adaptiveIcon": {
-        "backgroundColor": "#E6F4FE",
-        "foregroundImage": "./assets/android-icon-foreground.png",
-        "backgroundImage": "./assets/android-icon-background.png",
-        "monochromeImage": "./assets/android-icon-monochrome.png"
-      }
+      "package": "com.amuletstudios.colorfill",
+      "permissions": [
+        "android.permission.RECORD_AUDIO",
+        "android.permission.MODIFY_AUDIO_SETTINGS",
+        "com.google.android.gms.permission.AD_ID"
+      ]
     },
     "web": {
       "favicon": "./assets/favicon.png"
-    }
+    },
+    "plugins": [
+      "expo-audio",
+      "./plugins/withoutMediaPlaybackService",
+      "./plugins/withPinnedNdkVersion",
+      "expo-asset",
+      [
+        "react-native-google-mobile-ads",
+        {
+          "androidAppId": "ca-app-pub-3981993675235210~2567168174",
+          "iosAppId": "ca-app-pub-3981993675235210~7928993849",
+          "userTrackingUsageDescription": "This identifier will be used to deliver personalized ads to you.",
+          "optimizeInitialization": true,
+          "optimizeAdLoading": true
+        }
+      ],
+      "expo-tracking-transparency",
+      [
+        "expo-build-properties",
+        {
+          "android": {
+            "enableProguardInReleaseBuilds": true,
+            "enableShrinkResourcesInReleaseBuilds": true
+          }
+        }
+      ],
+      "expo-font"
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "386fb8c3-9f52-4d8a-bde7-00c171e33f0c"
+      }
+    },
+    "owner": "totallytom"
   }
 }

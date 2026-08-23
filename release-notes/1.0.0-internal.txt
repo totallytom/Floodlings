@@ -1,0 +1,10 @@
+Color Fill – Internal Testing v1.0.0
+
+What's new:
+- First internal build of Color Fill
+- Flood the board before time runs out across increasingly difficult levels
+- 3 lives per run with combo multipliers for chaining big captures
+- Haptic feedback and sound effects
+- Persistent high score
+- Settings: sound effects and music toggles
+- Privacy Policy and Terms of Service links

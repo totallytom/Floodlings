@@ -17,6 +17,7 @@ expo-env.d.ts
 *.p12
 *.key
 *.mobileprovision
+keystore.properties
 
 # Metro
 .metro-health-check*
@@ -39,3 +40,9 @@ yarn-error.*
 # generated native folders
 /ios
 /android
+
+# EAS build artifacts (large binaries; download from the EAS dashboard instead)
+*.aab
+*.apk
+*.ipa
+
