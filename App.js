@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { AppState } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import MobileAds, { AdsConsent } from 'react-native-google-mobile-ads';
@@ -23,8 +24,45 @@ export default function App() {
   });
 
   useEffect(() => {
+    // Wait until the app's window is actually visible before asking for ATT -
+    // requesting it while still on the fontsLoaded splash (rendering null) can
+    // cause iOS to silently skip the permission dialog instead of showing it.
+    if (!fontsLoaded) return;
+
+    let cancelled = false;
+    let appStateSub = null;
+
+    // iOS only presents the ATT prompt while the app is in the "active" state.
+    // Right after the splash the app can still be "inactive" for a beat; if we
+    // ask then, iOS returns "denied" without ever showing the dialog - which is
+    // exactly what App Review sees. Resolve once we're genuinely active.
+    const waitForActive = () => new Promise((resolve) => {
+      if (AppState.currentState === 'active') return resolve();
+      appStateSub = AppState.addEventListener('change', (state) => {
+        if (state === 'active') {
+          appStateSub?.remove();
+          appStateSub = null;
+          resolve();
+        }
+      });
+    });
+
     (async () => {
-      await requestTrackingPermissionsAsync();
+      await waitForActive();
+      if (cancelled) return;
+      // Small settle delay after becoming active - the very first active frame
+      // can still be too early for iOS to surface the system dialog.
+      await new Promise((r) => setTimeout(r, 350));
+      if (cancelled) return;
+
+      // Request ATT first and wait for the user's answer BEFORE any AdMob/UMP
+      // call, so tracking permission is resolved before ads are configured.
+      try {
+        await requestTrackingPermissionsAsync();
+      } catch (e) {
+        // Non-iOS or unavailable; carry on.
+      }
+      if (cancelled) return;
 
       // Google UMP: gather EEA/UK consent (or confirm it isn't required) before
       // requesting any ads, per AdMob policy.
@@ -36,12 +74,18 @@ export default function App() {
         // Consent SDK unavailable (e.g. offline on first launch); default to requesting
         // ads rather than losing revenue for the vast majority of non-regulated users.
       }
+      if (cancelled) return;
       if (canRequestAds) await MobileAds().initialize();
       // Only start loading ads once the SDK has actually finished initializing -
       // loading before that tends to fail and (pre-fix) never retried.
-      setAdsReady(canRequestAds);
+      if (!cancelled) setAdsReady(canRequestAds);
     })();
-  }, []);
+
+    return () => {
+      cancelled = true;
+      appStateSub?.remove();
+    };
+  }, [fontsLoaded]);
 
   if (!fontsLoaded) return null;
 
