@@ -1,12 +1,14 @@
 import React, { useRef, useEffect, useMemo, useState, useCallback } from 'react';
-import { View, Text, StyleSheet, Animated, TouchableOpacity } from 'react-native';
+import { View, Text, Image, StyleSheet, Animated, TouchableOpacity } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Board from '../components/Board';
 import HUD from '../components/HUD';
 import ObjectiveBar from '../components/ObjectiveBar';
+import RescueObjectiveBar from '../components/RescueObjectiveBar';
 import FreeModeTimer from '../components/FreeModeTimer';
 import GameBackdrop from '../components/GameBackdrop';
 import { LOW_MOVES_THRESHOLD, FREE_MODE_SECONDS, FREE_MODE_URGENT_THRESHOLD } from '../constants';
+import { iconForType, nameForType } from '../animals';
 import { useReduceMotion } from '../hooks/useReduceMotion';
 import { useTheme } from '../hooks/useTheme';
 
@@ -62,7 +64,76 @@ function PauseOverlay({ styles, onResume, onMenu }) {
   );
 }
 
-function IntroOverlay({ styles, mode, level, config, freeBestScore, onStart }) {
+function IntroOverlay({ styles, mode, level, config, freeBestScore, zenBestScore, onStart }) {
+  if (mode === 'zen') {
+    return (
+      <View style={styles.overlay}>
+        <View style={styles.modalCard}>
+          <Text accessibilityRole="header" style={styles.introTitle}>ZEN MODE</Text>
+          <Text style={styles.introSubtitle}>
+            No target, no move limit, no clock - just match at your own pace.
+          </Text>
+          <View
+            style={styles.introStatsRow}
+            accessible
+            accessibilityLabel={`Your best is ${zenBestScore.toLocaleString()} points.`}
+          >
+            <View style={styles.introStat}>
+              <Text accessible={false} style={styles.introStatLabel}>BEST</Text>
+              <Text accessible={false} style={styles.introStatValue}>{zenBestScore.toLocaleString()}</Text>
+            </View>
+          </View>
+          <TouchableOpacity
+            style={styles.resumeBtn}
+            onPress={onStart}
+            activeOpacity={0.8}
+            accessibilityRole="button"
+            accessibilityLabel="Start zen mode"
+            accessibilityHint={`Starts an untimed session. Your best is ${zenBestScore} points.`}
+          >
+            <Text style={styles.resumeText}>START</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    );
+  }
+
+  if (mode === 'rescue') {
+    const animalName = nameForType(config.targetType);
+    return (
+      <View style={styles.overlay}>
+        <View style={styles.modalCard}>
+          <Text accessibilityRole="header" style={styles.introTitle}>LEVEL {level}</Text>
+          <Image source={iconForType(config.targetType)} style={styles.introAnimalIcon} />
+          <View
+            style={styles.introStatsRow}
+            accessible
+            accessibilityLabel={`Rescue ${config.targetCount} ${animalName}s in ${config.moves} moves`}
+          >
+            <View style={styles.introStat}>
+              <Text accessible={false} style={styles.introStatLabel}>RESCUE</Text>
+              <Text accessible={false} style={styles.introStatValue}>{config.targetCount} {animalName}s</Text>
+            </View>
+            <View style={styles.introStat}>
+              <Text accessible={false} style={styles.introStatLabel}>MOVES</Text>
+              <Text accessible={false} style={styles.introStatValue}>{config.moves}</Text>
+            </View>
+          </View>
+          <TouchableOpacity
+            style={styles.resumeBtn}
+            onPress={onStart}
+            activeOpacity={0.8}
+            accessibilityRole="button"
+            accessibilityLabel="Start level"
+            accessibilityHint={`Starts level ${level}. Rescue ${config.targetCount} ${animalName}s in ${config.moves} moves.`}
+          >
+            <Text style={styles.resumeText}>START</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    );
+  }
+
   if (mode === 'free') {
     const timeLabel = `${Math.floor(FREE_MODE_SECONDS / 60)}:${String(FREE_MODE_SECONDS % 60).padStart(2, '0')}`;
     return (
@@ -145,8 +216,8 @@ function Stars({ styles, count }) {
 }
 
 export default function GameScreen({
-  mode, level, score, board, movesLeft, levelScore,
-  freeTimeLeft, freeBestScore,
+  mode, level, score, board, movesLeft, levelScore, rescueCount,
+  freeTimeLeft, freeBestScore, zenBestScore,
   combo, phase, config, pendingResolution,
   startPlaying, attemptSwap, finishResolution,
   paused, togglePause, returnToMenu,
@@ -177,9 +248,14 @@ export default function GameScreen({
       loopRef.current = null;
     }
 
+    // Zen has no moves/time budget to ever run low on - movesLeft just sits at
+    // whatever it was left at by a previous session, so without this explicit
+    // false it could misread as "urgent" and pulse the vignette for no reason.
     const isUrgent = mode === 'free'
       ? freeTimeLeft <= FREE_MODE_URGENT_THRESHOLD
-      : movesLeft <= LOW_MOVES_THRESHOLD;
+      : mode === 'zen'
+        ? false
+        : movesLeft <= LOW_MOVES_THRESHOLD;
     const urgentAndPlaying = isUrgent && phase === 'playing' && !paused;
 
     if (urgentAndPlaying && !reduceMotion) {
@@ -225,6 +301,13 @@ export default function GameScreen({
 
         {mode === 'free' ? (
           <FreeModeTimer freeTimeLeft={freeTimeLeft} />
+        ) : mode === 'zen' ? null : mode === 'rescue' ? (
+          <RescueObjectiveBar
+            rescueCount={rescueCount}
+            targetCount={config.targetCount}
+            targetType={config.targetType}
+            movesLeft={movesLeft}
+          />
         ) : (
           <ObjectiveBar levelScore={levelScore} targetScore={config.targetScore} movesLeft={movesLeft} />
         )}
@@ -262,6 +345,7 @@ export default function GameScreen({
           level={level}
           config={config}
           freeBestScore={freeBestScore}
+          zenBestScore={zenBestScore}
           onStart={startPlaying}
         />
       )}
@@ -366,6 +450,11 @@ function createStyles(theme) {
   introStatsRow: {
     flexDirection: 'row',
     gap: 32,
+  },
+  introAnimalIcon: {
+    width: 56,
+    height: 56,
+    resizeMode: 'contain',
   },
   introStat: {
     alignItems: 'center',

@@ -2,14 +2,22 @@ import React, { useRef, useEffect, useState, useMemo } from 'react';
 import { View, Text, Image, TouchableOpacity, StyleSheet, AccessibilityInfo, findNodeHandle } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import SettingsModal from '../components/SettingsModal';
+import StatsModal from '../components/StatsModal';
 import FloatingAnimals from '../components/FloatingAnimals';
 import { useTheme } from '../hooks/useTheme';
 
-export default function HomeScreen({ highScore, onPlay, freeBestScore, onPlayFree, soundEnabled, toggleSound }) {
+export default function HomeScreen({
+  highScore, onPlay, bestLevel,
+  freeBestScore, onPlayFree,
+  zenBestScore, onPlayZen,
+  rescueBestScore, onPlayRescue, rescueBestLevel,
+  soundEnabled, toggleSound,
+}) {
   const theme = useTheme();
   const styles = useMemo(() => createStyles(theme), [theme]);
   const headingRef = useRef(null);
   const [settingsVisible, setSettingsVisible] = useState(false);
+  const [statsVisible, setStatsVisible] = useState(false);
 
   useEffect(() => {
     const node = findNodeHandle(headingRef.current);
@@ -21,6 +29,19 @@ export default function HomeScreen({ highScore, onPlay, freeBestScore, onPlayFre
       <FloatingAnimals />
       <View style={styles.container}>
         <View style={styles.topRightRow}>
+          <TouchableOpacity
+            style={styles.iconBtn}
+            hitSlop={{ top: 3, bottom: 3, left: 3, right: 3 }}
+            onPress={() => setStatsVisible(true)}
+            activeOpacity={0.7}
+            accessibilityRole="button"
+            accessibilityLabel="Stats"
+          >
+            {/* No dedicated stats image asset exists - a plain glyph matches how
+                the app already handles other icon-only buttons (HUD's pause icon,
+                GameOverScreen's stars) rather than adding a new asset for this. */}
+            <Text style={styles.statsIcon}>🏆</Text>
+          </TouchableOpacity>
           <TouchableOpacity
             style={styles.iconBtn}
             hitSlop={{ top: 3, bottom: 3, left: 3, right: 3 }}
@@ -89,6 +110,51 @@ export default function HomeScreen({ highScore, onPlay, freeBestScore, onPlayFre
               BEST: {freeBestScore.toLocaleString()}
             </Text>
           )}
+
+          {/* Zen and Species Rescue reuse Free Mode's exact button treatment -
+              these three are equal-tier mode choices differentiated by label and
+              order, not by color, so no new color-contrast pairing needs vetting
+              (accentOrange here is already the one checked against this screen's
+              background). */}
+          <TouchableOpacity
+            style={[styles.freeModeBtn, styles.secondaryModeBtn]}
+            onPress={onPlayZen}
+            activeOpacity={0.8}
+            accessibilityRole="button"
+            accessibilityLabel="Zen mode"
+            accessibilityHint="Starts an untimed session with no move limit and no way to fail"
+          >
+            <Text style={styles.freeModeText}>ZEN MODE</Text>
+          </TouchableOpacity>
+          {zenBestScore > 0 && (
+            <Text
+              style={styles.freeModeBest}
+              accessible={true}
+              accessibilityLabel={`Zen mode best: ${zenBestScore.toLocaleString()}`}
+            >
+              BEST: {zenBestScore.toLocaleString()}
+            </Text>
+          )}
+
+          <TouchableOpacity
+            style={[styles.freeModeBtn, styles.secondaryModeBtn]}
+            onPress={onPlayRescue}
+            activeOpacity={0.8}
+            accessibilityRole="button"
+            accessibilityLabel="Species rescue"
+            accessibilityHint="Starts species rescue mode - rescue enough of a target animal each level before you run out of moves"
+          >
+            <Text style={styles.freeModeText}>SPECIES RESCUE</Text>
+          </TouchableOpacity>
+          {rescueBestScore > 0 && (
+            <Text
+              style={styles.freeModeBest}
+              accessible={true}
+              accessibilityLabel={`Species rescue best: ${rescueBestScore.toLocaleString()}`}
+            >
+              BEST: {rescueBestScore.toLocaleString()}
+            </Text>
+          )}
         </View>
 
         <Text style={styles.hint}>
@@ -102,6 +168,16 @@ export default function HomeScreen({ highScore, onPlay, freeBestScore, onPlayFre
         onClose={() => setSettingsVisible(false)}
         soundEnabled={soundEnabled}
         toggleSound={toggleSound}
+      />
+      <StatsModal
+        visible={statsVisible}
+        onClose={() => setStatsVisible(false)}
+        highScore={highScore}
+        bestLevel={bestLevel}
+        freeBestScore={freeBestScore}
+        zenBestScore={zenBestScore}
+        rescueBestScore={rescueBestScore}
+        rescueBestLevel={rescueBestLevel}
       />
     </SafeAreaView>
   );
@@ -135,6 +211,9 @@ function createStyles(theme) {
       width: 26,
       height: 26,
       tintColor: theme.textSecondary,
+    },
+    statsIcon: {
+      fontSize: 22,
     },
     header: {
       alignItems: 'center',
@@ -224,6 +303,9 @@ function createStyles(theme) {
       fontSize: 13,
       color: theme.textSecondary,
       letterSpacing: 2,
+    },
+    secondaryModeBtn: {
+      marginTop: 10,
     },
     hint: {
       fontFamily: 'BadUnicorn',

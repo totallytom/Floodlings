@@ -11,13 +11,17 @@ export default function HUD({ mode = 'levels', level, score, movesLeft, combo, p
   // game-screen background at this text size, same issue those had.
   const comboColors = ['#FFFFFF', theme.accentOrange, theme.dangerText, theme.accentPurpleText];
   const lowMoves = movesLeft <= LOW_MOVES_THRESHOLD;
+  // Levels and Rescue are both move-limited, numbered progressions; Free and Zen
+  // are both un-numbered sessions (timed vs untimed) - same split the moves row
+  // below uses.
+  const isLevelBased = mode === 'levels' || mode === 'rescue';
 
   return (
     <View style={styles.container}>
       <View style={styles.row}>
         <View>
-          <Text style={styles.label} maxFontSizeMultiplier={1.5}>{mode === 'free' ? 'MODE' : 'LEVEL'}</Text>
-          <Text style={styles.value} maxFontSizeMultiplier={1.5}>{mode === 'free' ? 'FREE' : level}</Text>
+          <Text style={styles.label} maxFontSizeMultiplier={1.5}>{isLevelBased ? 'LEVEL' : 'MODE'}</Text>
+          <Text style={styles.value} maxFontSizeMultiplier={1.5}>{isLevelBased ? level : (mode === 'zen' ? 'ZEN' : 'FREE')}</Text>
         </View>
 
         <View style={styles.center}>
@@ -51,7 +55,7 @@ export default function HUD({ mode = 'levels', level, score, movesLeft, combo, p
         </View>
       </View>
 
-      {mode !== 'free' && (
+      {isLevelBased && (
         <View style={styles.movesRow}>
           <Text
             style={[styles.movesText, lowMoves && styles.movesOver]}

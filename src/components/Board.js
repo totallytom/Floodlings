@@ -27,7 +27,7 @@ function boardToTiles(board, enterRowMap) {
 }
 
 function Tile({ id, type, row, col, tileSize, popping, shakeNonce, active, reduceMotion, enterFromRow, onSwipe }) {
-  const pos = useRef(new Animated.ValueXY({ x: col * tileSize, y: (enterFromRow ?? row) * tileSize })).current;
+  const pos = useRef(new Animated.ValueXY({ x: col * (tileSize + GAP), y: (enterFromRow ?? row) * (tileSize + GAP) })).current;
   const scale = useRef(new Animated.Value(1)).current;
   // Two tiles swapping places move in a straight line directly toward each
   // other and, being the same size, would fully overlap/clip through one
@@ -40,11 +40,24 @@ function Tile({ id, type, row, col, tileSize, popping, shakeNonce, active, reduc
   const activeRef = useRef(active);
   activeRef.current = active;
 
+  // tileSize can change after mount (e.g. the objective bar/timer above the
+  // board settling its height, which shrinks the height budget). Snap every
+  // tile to its new grid slot immediately - otherwise only tiles whose row/col
+  // later change would pick up the new spacing, leaving stationary tiles at
+  // their old pixel positions and the grid visibly out of line.
+  const prevTileSizeRef = useRef(tileSize);
+  useEffect(() => {
+    if (prevTileSizeRef.current === tileSize) return;
+    prevTileSizeRef.current = tileSize;
+    pos.stopAnimation();
+    pos.setValue({ x: col * (tileSize + GAP), y: row * (tileSize + GAP) });
+  }, [tileSize]);
+
   useEffect(() => {
     const duration = reduceMotion ? 1 : SWAP_SETTLE_MS;
     Animated.parallel([
       Animated.timing(pos, {
-        toValue: { x: col * tileSize, y: row * tileSize },
+        toValue: { x: col * (tileSize + GAP), y: row * (tileSize + GAP) },
         duration,
         easing: Easing.out(Easing.quad),
         useNativeDriver: true,
@@ -160,11 +173,15 @@ export default function Board({ board, movesLeft, phase, paused, pendingResoluti
   const fallbackWidth = Dimensions.get('window').width - PADDING * 2;
   const widthBudget = maxWidth > 0 ? maxWidth : fallbackWidth;
   const heightBudget = maxHeight > 0 ? maxHeight : fallbackWidth;
+  // Floored to a whole pixel - a fractional size can round differently between
+  // a tile's width/height style and its transform: translate position on some
+  // devices, opening tiny inconsistent seams across the grid instead of one
+  // uniform gap.
   const tileSize = (numRows && numCols)
-    ? Math.min(
+    ? Math.floor(Math.min(
         (widthBudget - GAP * (numCols - 1)) / numCols,
         (heightBudget - GAP * (numRows - 1)) / numRows
-      )
+      ))
     : 0;
   const boardPixelWidth = tileSize * numCols + GAP * (numCols - 1);
   const boardPixelHeight = tileSize * numRows + GAP * (numRows - 1);

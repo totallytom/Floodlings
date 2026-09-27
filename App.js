@@ -96,9 +96,15 @@ export default function App() {
         {game.screen === 'home' && (
           <HomeScreen
             highScore={game.highScore}
+            bestLevel={game.bestLevel}
             onPlay={game.startGame}
             freeBestScore={game.freeBestScore}
             onPlayFree={game.startFreeGame}
+            zenBestScore={game.zenBestScore}
+            onPlayZen={game.startZenGame}
+            rescueBestScore={game.rescueBestScore}
+            rescueBestLevel={game.rescueBestLevel}
+            onPlayRescue={game.startRescueGame}
             soundEnabled={settings.soundEnabled}
             toggleSound={settings.toggleSound}
           />
@@ -111,8 +117,10 @@ export default function App() {
             board={game.board}
             movesLeft={game.movesLeft}
             levelScore={game.levelScore}
+            rescueCount={game.rescueCount}
             freeTimeLeft={game.freeTimeLeft}
             freeBestScore={game.freeBestScore}
+            zenBestScore={game.zenBestScore}
             combo={game.combo}
             phase={game.phase}
             config={game.config}
@@ -130,12 +138,16 @@ export default function App() {
           <GameOverScreen
             mode={game.mode}
             score={game.score}
-            highScore={game.mode === 'free' ? game.freeBestScore : game.highScore}
+            highScore={
+              game.mode === 'free' ? game.freeBestScore :
+              game.mode === 'rescue' ? game.rescueBestScore :
+              game.highScore
+            }
             level={game.level}
-            onPlayAgain={game.mode === 'free' ? game.startFreeGame : game.startGame}
+            onPlayAgain={game.mode === 'free' ? game.startFreeGame : game.mode === 'rescue' ? game.startRescueGame : game.startGame}
             onHome={() => game.setScreen('home')}
             onContinue={game.onContinue}
-            canContinue={game.mode === 'levels' && game.canContinue && game.rewLoaded}
+            canContinue={(game.mode === 'levels' || game.mode === 'rescue') && game.canContinue && game.rewLoaded}
           />
         )}
       </SafeAreaProvider>

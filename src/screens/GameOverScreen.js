@@ -49,7 +49,7 @@ export default function GameOverScreen({ mode = 'levels', score, highScore, leve
             <Text accessible={false} style={[styles.statValue, styles.statAccent]}>{score.toLocaleString()}</Text>
           </View>
           <View accessible={false} style={styles.divider} />
-          {mode !== 'free' && (
+          {(mode === 'levels' || mode === 'rescue') && (
             <>
               <View accessible={true} accessibilityLabel={`Level reached: ${level}`} style={styles.stat}>
                 <Text accessible={false} style={styles.statLabel}>LEVEL REACHED</Text>

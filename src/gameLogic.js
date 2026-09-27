@@ -1,4 +1,10 @@
-let _nextId = 0;
+// Seeded from the clock, not 0 - a Fast Refresh reload during development
+// re-runs this module and would otherwise reset the counter to 0 while tiles
+// from before the reload (with those same low ids) are still sitting in
+// React state, colliding on key and making a tile vanish/misplace. Time only
+// moves forward, so a fresh reload's ids start safely past anything still alive
+// from before it - this has no effect on a real (non-hot-reloading) build.
+let _nextId = Date.now() * 1000;
 function allocId() {
   return _nextId++;
 }
@@ -159,16 +165,23 @@ export function resolveBoard(board, numTypes) {
   let cascadeIndex = 0;
   let totalScore = 0;
   const steps = [];
+  // Per-type counts of cleared cells, summed across every cascade step - lets
+  // Species Rescue tally progress toward its target animal without re-deriving
+  // types from matchedCells (which only carries positions, not what was there).
+  const totalTypeCounts = new Array(numTypes).fill(0);
 
   while (true) {
     const { matchedSet, runs } = findMatches(current);
     if (matchedSet.size === 0) break;
 
     const cleared = current.map(row => row.slice());
+    const typeCounts = new Array(numTypes).fill(0);
     for (const key of matchedSet) {
       const [r, c] = key.split(',').map(Number);
+      typeCounts[current[r][c].type]++;
       cleared[r][c] = null;
     }
+    for (let t = 0; t < numTypes; t++) totalTypeCounts[t] += typeCounts[t];
 
     const scoreGained = scoreForRuns(runs, cascadeIndex);
     const { board: refilled, fallMoves } = applyGravityAndRefill(cleared, numTypes);
@@ -180,6 +193,7 @@ export function resolveBoard(board, numTypes) {
       scoreGained,
       cascadeIndex,
       boardAfter: refilled,
+      typeCounts,
     });
 
     totalScore += scoreGained;
@@ -191,5 +205,5 @@ export function resolveBoard(board, numTypes) {
     current = generateBoard(current.length, current[0].length, numTypes);
   }
 
-  return { finalBoard: current, steps, totalScore, maxCascade: cascadeIndex };
+  return { finalBoard: current, steps, totalScore, maxCascade: cascadeIndex, totalTypeCounts };
 }

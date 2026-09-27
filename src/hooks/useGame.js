@@ -3,12 +3,16 @@ import { AccessibilityInfo, Platform } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Haptics from 'expo-haptics';
 import { generateBoard, isAdjacent, swapCells, wouldMatch, resolveBoard } from '../gameLogic';
-import { getLevelConfig, getFreeModeConfig, FREE_MODE_SECONDS, starsForScore, COMBO_LABELS, LOW_MOVES_THRESHOLD } from '../constants';
+import { getLevelConfig, getFreeModeConfig, getZenModeConfig, getRescueLevelConfig, FREE_MODE_SECONDS, starsForScore, COMBO_LABELS, LOW_MOVES_THRESHOLD } from '../constants';
 import { useGameSounds } from './useGameSounds';
 import { useAds } from './useAds';
 
 const HS_KEY = 'cf_highscore';
 const FREE_HS_KEY = 'cf_free_highscore';
+const ZEN_HS_KEY = 'cf_zen_highscore';
+const RESCUE_HS_KEY = 'cf_rescue_highscore';
+const BEST_LEVEL_KEY = 'cf_best_level';
+const RESCUE_BEST_LEVEL_KEY = 'cf_rescue_best_level';
 
 // accessibilityLiveRegion (used elsewhere for the same announcements) is Android-only;
 // iOS VoiceOver needs an explicit announcement instead. Android already gets these via
@@ -21,17 +25,22 @@ export default function useGame({ soundEnabled = true, adsReady = false } = {}) 
   const { playSwap, playCombo, playClear, playFailed, playLowMoves } = useGameSounds(soundEnabled);
   const { trackLevelClear, showInterstitial, showRewarded, rewLoaded } = useAds({ adsReady });
   const [screen, setScreen] = useState('home');
-  const [mode, setMode] = useState('levels'); // levels | free
+  const [mode, setMode] = useState('levels'); // levels | free | zen | rescue
   const [level, setLevel] = useState(1);
   const [score, setScore] = useState(0);
   const [board, setBoard] = useState(null);
   const [movesLeft, setMovesLeft] = useState(0);
   const [levelScore, setLevelScore] = useState(0);
+  const [rescueCount, setRescueCount] = useState(0);
   const [combo, setCombo] = useState(0);
   const [phase, setPhase] = useState('playing'); // intro | playing | resolving | cleared | failed
   const [paused, setPaused] = useState(false);
   const [highScore, setHighScore] = useState(0);
   const [freeBestScore, setFreeBestScore] = useState(0);
+  const [zenBestScore, setZenBestScore] = useState(0);
+  const [rescueBestScore, setRescueBestScore] = useState(0);
+  const [bestLevel, setBestLevel] = useState(1);
+  const [rescueBestLevel, setRescueBestLevel] = useState(1);
   const [freeTimeLeft, setFreeTimeLeft] = useState(FREE_MODE_SECONDS);
   const [canContinue, setCanContinue] = useState(true);
   const [levelStats, setLevelStats] = useState({ stars: 3 });
@@ -44,6 +53,7 @@ export default function useGame({ soundEnabled = true, adsReady = false } = {}) 
   const boardRef = useRef(null);
   const movesLeftRef = useRef(0);
   const levelScoreRef = useRef(0);
+  const rescueCountRef = useRef(0);
   const freeTimeLeftRef = useRef(FREE_MODE_SECONDS);
   const configRef = useRef(getLevelConfig(1));
 
@@ -53,6 +63,7 @@ export default function useGame({ soundEnabled = true, adsReady = false } = {}) 
   useEffect(() => { boardRef.current = board; }, [board]);
   useEffect(() => { movesLeftRef.current = movesLeft; }, [movesLeft]);
   useEffect(() => { levelScoreRef.current = levelScore; }, [levelScore]);
+  useEffect(() => { rescueCountRef.current = rescueCount; }, [rescueCount]);
   useEffect(() => { freeTimeLeftRef.current = freeTimeLeft; }, [freeTimeLeft]);
 
   useEffect(() => {
@@ -61,6 +72,18 @@ export default function useGame({ soundEnabled = true, adsReady = false } = {}) 
     });
     AsyncStorage.getItem(FREE_HS_KEY).then(val => {
       if (val) setFreeBestScore(parseInt(val, 10));
+    });
+    AsyncStorage.getItem(ZEN_HS_KEY).then(val => {
+      if (val) setZenBestScore(parseInt(val, 10));
+    });
+    AsyncStorage.getItem(RESCUE_HS_KEY).then(val => {
+      if (val) setRescueBestScore(parseInt(val, 10));
+    });
+    AsyncStorage.getItem(BEST_LEVEL_KEY).then(val => {
+      if (val) setBestLevel(parseInt(val, 10));
+    });
+    AsyncStorage.getItem(RESCUE_BEST_LEVEL_KEY).then(val => {
+      if (val) setRescueBestLevel(parseInt(val, 10));
     });
   }, []);
 
@@ -82,6 +105,42 @@ export default function useGame({ soundEnabled = true, adsReady = false } = {}) 
     }
   }, []);
 
+  const saveZenBestScore = useCallback(async (newScore) => {
+    const raw = await AsyncStorage.getItem(ZEN_HS_KEY);
+    const current = raw ? parseInt(raw, 10) : 0;
+    if (newScore > current) {
+      await AsyncStorage.setItem(ZEN_HS_KEY, String(newScore));
+      setZenBestScore(newScore);
+    }
+  }, []);
+
+  const saveRescueBestScore = useCallback(async (newScore) => {
+    const raw = await AsyncStorage.getItem(RESCUE_HS_KEY);
+    const current = raw ? parseInt(raw, 10) : 0;
+    if (newScore > current) {
+      await AsyncStorage.setItem(RESCUE_HS_KEY, String(newScore));
+      setRescueBestScore(newScore);
+    }
+  }, []);
+
+  const saveBestLevel = useCallback(async (lvl) => {
+    const raw = await AsyncStorage.getItem(BEST_LEVEL_KEY);
+    const current = raw ? parseInt(raw, 10) : 0;
+    if (lvl > current) {
+      await AsyncStorage.setItem(BEST_LEVEL_KEY, String(lvl));
+      setBestLevel(lvl);
+    }
+  }, []);
+
+  const saveRescueBestLevel = useCallback(async (lvl) => {
+    const raw = await AsyncStorage.getItem(RESCUE_BEST_LEVEL_KEY);
+    const current = raw ? parseInt(raw, 10) : 0;
+    if (lvl > current) {
+      await AsyncStorage.setItem(RESCUE_BEST_LEVEL_KEY, String(lvl));
+      setRescueBestLevel(lvl);
+    }
+  }, []);
+
   const startNewLevel = useCallback((lvl) => {
     const cfg = getLevelConfig(lvl);
     configRef.current = cfg;
@@ -97,7 +156,8 @@ export default function useGame({ soundEnabled = true, adsReady = false } = {}) 
     // before the timer on your attention starts.
     setPhase('intro');
     setPendingResolution(null);
-  }, []);
+    saveBestLevel(lvl);
+  }, [saveBestLevel]);
 
   const startPlaying = useCallback(() => {
     setPhase('playing');
@@ -121,6 +181,49 @@ export default function useGame({ soundEnabled = true, adsReady = false } = {}) 
     setScreen('game');
   }, []);
 
+  const startZenGame = useCallback(() => {
+    const cfg = getZenModeConfig();
+    configRef.current = cfg;
+    const newBoard = generateBoard(cfg.rows, cfg.cols, cfg.numTypes);
+    setMode('zen');
+    setBoard(newBoard);
+    setScore(0);
+    setLevelScore(0);
+    setCombo(0);
+    // Zen has no clock and no fail state - the only way out is Return to Menu
+    // (via the pause overlay), which saves the score same as any other mode.
+    setPhase('intro');
+    setPendingResolution(null);
+    setPaused(false);
+    setScreen('game');
+  }, []);
+
+  const startRescueLevel = useCallback((lvl) => {
+    const cfg = getRescueLevelConfig(lvl);
+    configRef.current = cfg;
+    const newBoard = generateBoard(cfg.rows, cfg.cols, cfg.numTypes);
+    setLevel(lvl);
+    setBoard(newBoard);
+    setMovesLeft(cfg.moves);
+    setLevelScore(0);
+    setRescueCount(0);
+    setCombo(0);
+    // Same 'intro' hold as startNewLevel - lets the player see which animal and
+    // how many they need before the move count starts ticking down.
+    setPhase('intro');
+    setPendingResolution(null);
+    saveRescueBestLevel(lvl);
+  }, [saveRescueBestLevel]);
+
+  const startRescueGame = useCallback(() => {
+    setMode('rescue');
+    setScore(0);
+    setCanContinue(true);
+    setPaused(false);
+    startRescueLevel(1);
+    setScreen('game');
+  }, [startRescueLevel]);
+
   const endGame = useCallback(() => {
     saveHighScore(scoreRef.current);
     setScreen('gameover');
@@ -130,6 +233,11 @@ export default function useGame({ soundEnabled = true, adsReady = false } = {}) 
     saveFreeBestScore(scoreRef.current);
     showInterstitial(() => setScreen('gameover'));
   }, [saveFreeBestScore, showInterstitial]);
+
+  const endRescueGame = useCallback(() => {
+    saveRescueBestScore(scoreRef.current);
+    setScreen('gameover');
+  }, [saveRescueBestScore]);
 
   const handleFreeTimeUp = useCallback(() => {
     playFailed();
@@ -167,34 +275,71 @@ export default function useGame({ soundEnabled = true, adsReady = false } = {}) 
     setCanContinue(false);
     showRewarded(() => {
       setPaused(false);
-      startNewLevel(levelRef.current);
+      // Mode-aware: Rescue mode's fail state can reach here too, and it needs its
+      // own starter (Rescue's config/board shape), not Levels'.
+      if (modeRef.current === 'rescue') startRescueLevel(levelRef.current);
+      else startNewLevel(levelRef.current);
       setScreen('game');
     });
-  }, [startNewLevel, showRewarded]);
+  }, [startNewLevel, startRescueLevel, showRewarded]);
 
   const togglePause = useCallback(() => {
     setPaused(p => !p);
   }, []);
 
   const returnToMenu = useCallback(() => {
+    if (modeRef.current === 'zen') {
+      // Zen has no timer and no fail state, so Return to Menu is the only point
+      // in a session that can ever show an ad - without this, a Zen session
+      // (how ever long) would generate zero ad revenue.
+      saveZenBestScore(scoreRef.current);
+      setPaused(false);
+      showInterstitial(() => setScreen('home'));
+      return;
+    }
     if (modeRef.current === 'free') saveFreeBestScore(scoreRef.current);
+    else if (modeRef.current === 'rescue') saveRescueBestScore(scoreRef.current);
     else saveHighScore(scoreRef.current);
     setPaused(false);
     setScreen('home');
-  }, [saveHighScore, saveFreeBestScore]);
+  }, [saveHighScore, saveFreeBestScore, saveZenBestScore, saveRescueBestScore, showInterstitial]);
 
   const finishResolution = useCallback(() => {
     setPendingResolution(null);
 
-    if (modeRef.current === 'free') {
-      // No target/moves gate in Free Mode - the countdown effect above is the
-      // only thing that ends a session, so every resolved swap just returns to
-      // 'playing'.
+    if (modeRef.current === 'free' || modeRef.current === 'zen') {
+      // No target/moves gate in Free or Zen Mode - Free's countdown effect (or,
+      // for Zen, nothing at all) is the only thing that ends a session, so every
+      // resolved swap just returns to 'playing'.
       setPhase('playing');
       return;
     }
 
     const cfg = configRef.current;
+
+    if (modeRef.current === 'rescue') {
+      if (rescueCountRef.current >= cfg.targetCount) {
+        const stars = starsForScore(rescueCountRef.current, cfg.targetCount);
+        setLevelStats({ stars });
+        setPhase('cleared');
+        playClear();
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        announceIOS(`Level complete! ${stars} out of 3 stars.`);
+        setTimeout(() => {
+          trackLevelClear(() => startRescueLevel(levelRef.current + 1));
+        }, 1200);
+      } else if (movesLeftRef.current <= 0) {
+        playFailed();
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+        setPhase('failed');
+        announceIOS('Out of moves!');
+        setTimeout(() => endRescueGame(), 1500);
+      } else {
+        setPhase('playing');
+        if (movesLeftRef.current === LOW_MOVES_THRESHOLD) playLowMoves();
+      }
+      return;
+    }
 
     if (levelScoreRef.current >= cfg.targetScore) {
       const stars = starsForScore(levelScoreRef.current, cfg.targetScore);
@@ -216,7 +361,7 @@ export default function useGame({ soundEnabled = true, adsReady = false } = {}) 
       setPhase('playing');
       if (movesLeftRef.current === LOW_MOVES_THRESHOLD) playLowMoves();
     }
-  }, [startNewLevel, trackLevelClear, endGame, playClear, playFailed, playLowMoves]);
+  }, [startNewLevel, startRescueLevel, trackLevelClear, endGame, endRescueGame, playClear, playFailed, playLowMoves]);
 
   const attemptSwap = useCallback((a, b) => {
     const currentBoard = boardRef.current;
@@ -234,11 +379,15 @@ export default function useGame({ soundEnabled = true, adsReady = false } = {}) 
     setMovesLeft(newMovesLeft);
     setPhase('resolving');
 
-    const { finalBoard, steps, totalScore, maxCascade } = resolveBoard(swapped, cfg.numTypes);
+    const { finalBoard, steps, totalScore, maxCascade, totalTypeCounts } = resolveBoard(swapped, cfg.numTypes);
     const comboTier = Math.min(3, Math.max(0, maxCascade - 1));
     setCombo(comboTier);
     setScore(s => s + totalScore);
     setLevelScore(s => s + totalScore);
+    if (modeRef.current === 'rescue') {
+      const rescued = totalTypeCounts[cfg.targetType] || 0;
+      if (rescued > 0) setRescueCount(c => c + rescued);
+    }
     setBoard(finalBoard);
     setPendingResolution({ swappedBoard: swapped, steps, finalBoard });
 
@@ -254,15 +403,24 @@ export default function useGame({ soundEnabled = true, adsReady = false } = {}) 
     return true;
   }, [phase, paused, playSwap, playCombo, playFailed]);
 
-  const config = mode === 'free' ? configRef.current : getLevelConfig(level);
+  // Free/Zen configs are set once at session start and don't change per-render,
+  // so the ref is fine there. Levels/Rescue re-derive from `level` (reactive
+  // state) each render instead, same as the original Levels behavior, rather
+  // than relying on a ref for something the UI needs to react to.
+  const config = mode === 'free' || mode === 'zen'
+    ? configRef.current
+    : mode === 'rescue'
+      ? getRescueLevelConfig(level)
+      : getLevelConfig(level);
 
   return {
     screen, setScreen,
     mode, level, score, board,
-    movesLeft, levelScore, combo,
-    phase, highScore, freeBestScore, freeTimeLeft,
+    movesLeft, levelScore, rescueCount, combo,
+    phase, highScore, freeBestScore, zenBestScore, rescueBestScore, freeTimeLeft,
+    bestLevel, rescueBestLevel,
     config, levelStats, pendingResolution,
-    startGame, startFreeGame, startPlaying, attemptSwap, finishResolution,
+    startGame, startFreeGame, startZenGame, startRescueGame, startPlaying, attemptSwap, finishResolution,
     togglePause, returnToMenu,
     paused, canContinue, onContinue, rewLoaded,
   };
