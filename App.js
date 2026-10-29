@@ -98,6 +98,9 @@ export default function App() {
             highScore={game.highScore}
             bestLevel={game.bestLevel}
             onPlay={game.startGame}
+            onRestart={game.restartGame}
+            levelsProgress={game.levelsProgress}
+            levelsStars={game.levelsStars}
             freeBestScore={game.freeBestScore}
             onPlayFree={game.startFreeGame}
             zenBestScore={game.zenBestScore}
@@ -105,6 +108,8 @@ export default function App() {
             rescueBestScore={game.rescueBestScore}
             rescueBestLevel={game.rescueBestLevel}
             onPlayRescue={game.startRescueGame}
+            onRestartRescue={game.restartRescueGame}
+            rescueProgress={game.rescueProgress}
             soundEnabled={settings.soundEnabled}
             toggleSound={settings.toggleSound}
           />
@@ -122,6 +127,7 @@ export default function App() {
             freeBestScore={game.freeBestScore}
             zenBestScore={game.zenBestScore}
             combo={game.combo}
+            streak={game.streak}
             phase={game.phase}
             config={game.config}
             pendingResolution={game.pendingResolution}

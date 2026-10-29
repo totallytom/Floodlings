@@ -13,6 +13,8 @@ function Stat({ label, value, accent }) {
 
 export default function GameOverScreen({ mode = 'levels', score, highScore, level, onPlayAgain, onHome, onContinue, canContinue }) {
   const isNewRecord = score > 0 && score >= highScore;
+  // Levels/Rescue keep a checkpoint, so "again" means this level, not level 1.
+  const isLevelBased = mode === 'levels' || mode === 'rescue';
   const headingRef = useRef(null);
 
   useEffect(() => {
@@ -70,11 +72,11 @@ export default function GameOverScreen({ mode = 'levels', score, highScore, leve
             onPress={onContinue}
             activeOpacity={0.8}
             accessibilityRole="button"
-            accessibilityLabel="Continue — watch an ad to retry this level"
-            accessibilityHint="Retries the level you just failed"
+            accessibilityLabel="Continue — watch an ad to retry this level and keep your score"
+            accessibilityHint="Retries the level you just failed without resetting your run score"
           >
             <Text style={styles.restoreText}>CONTINUE</Text>
-            <Text style={styles.restoreSubtext}>Watch Ad · Retry Level</Text>
+            <Text style={styles.restoreSubtext}>Watch Ad · Keep Your Score</Text>
           </TouchableOpacity>
         )}
 
@@ -83,10 +85,10 @@ export default function GameOverScreen({ mode = 'levels', score, highScore, leve
           onPress={onPlayAgain}
           activeOpacity={0.8}
           accessibilityRole="button"
-          accessibilityLabel="Play again"
-          accessibilityHint="Starts a new game"
+          accessibilityLabel={isLevelBased ? `Try again, level ${level}` : 'Play again'}
+          accessibilityHint={isLevelBased ? 'Replays this level with a fresh score - your level progress is kept' : 'Starts a new game'}
         >
-          <Text style={styles.playAgainText}>PLAY AGAIN</Text>
+          <Text style={styles.playAgainText}>{isLevelBased ? `TRY AGAIN · LEVEL ${level}` : 'PLAY AGAIN'}</Text>
         </TouchableOpacity>
 
         <TouchableOpacity

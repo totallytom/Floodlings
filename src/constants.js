@@ -76,3 +76,16 @@ export function starsForScore(levelScore, targetScore) {
 // index 0 = no cascade, 1/2/3 = increasing tiers - shared between the HUD display
 // and the VoiceOver announcement fired from useGame.
 export const COMBO_LABELS = ['', 'COMBO ×1.5', 'COMBO ×2.5!', 'COMBO ×4!!'];
+
+// Big center-of-board callouts, indexed by cascade step (0 = the swap's own
+// match). Step 0 only gets one when it's a 4+ match - see GameScreen.
+export const COMBO_CALLOUTS = ['SWEET!', 'NICE!', 'GREAT!', 'AMAZING!', 'SPECTACULAR!', 'LEGENDARY!'];
+export const COMBO_CALLOUT_COLORS = ['#30D158', '#64D2FF', '#FFD60A', '#FF9F0A', '#FF2D55', '#BF5AF2'];
+
+// Streak: consecutive "great" moves (any cascade, or a 4+ match). Purely
+// cosmetic - it drives the HUD badge and board glow but never changes scoring,
+// so level targets stay balanced exactly as before.
+export function isGreatMove(steps) {
+  if (steps.length >= 2) return true;
+  return steps.length > 0 && steps[0].runs.some(r => r.length >= 4);
+}

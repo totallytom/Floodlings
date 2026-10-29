@@ -1,16 +1,17 @@
 import React, { useRef, useEffect, useState, useMemo } from 'react';
-import { View, Text, Image, TouchableOpacity, StyleSheet, AccessibilityInfo, findNodeHandle } from 'react-native';
+import { View, Text, Image, TouchableOpacity, StyleSheet, AccessibilityInfo, findNodeHandle, ScrollView, Alert } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import SettingsModal from '../components/SettingsModal';
 import StatsModal from '../components/StatsModal';
 import FloatingAnimals from '../components/FloatingAnimals';
+import LevelPath from '../components/LevelPath';
 import { useTheme } from '../hooks/useTheme';
 
 export default function HomeScreen({
-  highScore, onPlay, bestLevel,
+  highScore, onPlay, onRestart, bestLevel, levelsProgress, levelsStars,
   freeBestScore, onPlayFree,
   zenBestScore, onPlayZen,
-  rescueBestScore, onPlayRescue, rescueBestLevel,
+  rescueBestScore, onPlayRescue, onRestartRescue, rescueBestLevel, rescueProgress,
   soundEnabled, toggleSound,
 }) {
   const theme = useTheme();
@@ -24,9 +25,24 @@ export default function HomeScreen({
     if (node) AccessibilityInfo.setAccessibilityFocus(node);
   }, []);
 
+  const hasLevelsProgress = levelsProgress.level > 1 || levelsProgress.score > 0;
+  const hasRescueProgress = rescueProgress.level > 1 || rescueProgress.score > 0;
+
+  // Stars are kept either way - starting over only moves the checkpoint back
+  // to level 1, so replaying can still improve old ratings.
+  const confirmStartOver = () => {
+    const buttons = [{ text: 'Cancel', style: 'cancel' }];
+    if (hasLevelsProgress) buttons.push({ text: `Levels (on ${levelsProgress.level})`, style: 'destructive', onPress: onRestart });
+    if (hasRescueProgress) buttons.push({ text: `Species Rescue (on ${rescueProgress.level})`, style: 'destructive', onPress: onRestartRescue });
+    Alert.alert('Start over?', 'Which mode should go back to level 1? Your stars and best scores are kept.', buttons);
+  };
+
   return (
     <SafeAreaView style={styles.safe}>
       <FloatingAnimals />
+      {/* Scrollable so the extra progress UI can't push the bottom of the menu
+          off-screen on short phones; on taller ones it stays centered. */}
+      <ScrollView contentContainerStyle={styles.scrollContent} bounces={false}>
       <View style={styles.container}>
         <View style={styles.topRightRow}>
           <TouchableOpacity
@@ -79,16 +95,35 @@ export default function HomeScreen({
           </View>
         )}
 
-        <TouchableOpacity
-          style={styles.playBtn}
-          onPress={onPlay}
-          activeOpacity={0.8}
-          accessibilityRole="button"
-          accessibilityLabel="Play"
-          accessibilityHint="Starts a new game"
-        >
-          <Text style={styles.playText}>PLAY</Text>
-        </TouchableOpacity>
+        {hasLevelsProgress && <LevelPath currentLevel={levelsProgress.level} stars={levelsStars} />}
+
+        <View style={styles.playGroup}>
+          <TouchableOpacity
+            style={styles.playBtn}
+            onPress={onPlay}
+            activeOpacity={0.8}
+            accessibilityRole="button"
+            accessibilityLabel={hasLevelsProgress ? `Continue, level ${levelsProgress.level}` : 'Play'}
+            accessibilityHint={hasLevelsProgress ? 'Picks up from the level you left off on' : 'Starts a new game'}
+          >
+            <Text style={styles.playText}>{hasLevelsProgress ? 'CONTINUE' : 'PLAY'}</Text>
+            {hasLevelsProgress && (
+              <Text style={styles.playSubtext}>LEVEL {levelsProgress.level}</Text>
+            )}
+          </TouchableOpacity>
+          {(hasLevelsProgress || hasRescueProgress) && (
+            <TouchableOpacity
+              onPress={confirmStartOver}
+              activeOpacity={0.7}
+              accessibilityRole="button"
+              accessibilityLabel="Start over"
+              accessibilityHint="Choose a mode to restart from level 1"
+              hitSlop={{ top: 8, bottom: 8, left: 12, right: 12 }}
+            >
+              <Text style={styles.startOverText}>START OVER</Text>
+            </TouchableOpacity>
+          )}
+        </View>
 
         <View style={styles.modeGroup}>
           <TouchableOpacity
@@ -141,18 +176,18 @@ export default function HomeScreen({
             onPress={onPlayRescue}
             activeOpacity={0.8}
             accessibilityRole="button"
-            accessibilityLabel="Species rescue"
+            accessibilityLabel={hasRescueProgress ? `Species rescue, continue level ${rescueProgress.level}` : 'Species rescue'}
             accessibilityHint="Starts species rescue mode - rescue enough of a target animal each level before you run out of moves"
           >
             <Text style={styles.freeModeText}>SPECIES RESCUE</Text>
           </TouchableOpacity>
-          {rescueBestScore > 0 && (
+          {(rescueBestScore > 0 || hasRescueProgress) && (
             <Text
               style={styles.freeModeBest}
               accessible={true}
-              accessibilityLabel={`Species rescue best: ${rescueBestScore.toLocaleString()}`}
+              accessibilityLabel={`Species rescue: level ${rescueProgress.level}, best ${rescueBestScore.toLocaleString()}`}
             >
-              BEST: {rescueBestScore.toLocaleString()}
+              LEVEL {rescueProgress.level} · BEST: {rescueBestScore.toLocaleString()}
             </Text>
           )}
         </View>
@@ -162,6 +197,7 @@ export default function HomeScreen({
           Chain cascades to multiply your score.
         </Text>
       </View>
+      </ScrollView>
 
       <SettingsModal
         visible={settingsVisible}
@@ -189,12 +225,16 @@ function createStyles(theme) {
       flex: 1,
       backgroundColor: theme.background,
     },
+    scrollContent: {
+      flexGrow: 1,
+    },
     container: {
       flex: 1,
       alignItems: 'center',
       justifyContent: 'center',
-      gap: 28,
+      gap: 24,
       paddingHorizontal: 24,
+      paddingVertical: 56,
     },
     topRightRow: {
       position: 'absolute',
@@ -267,6 +307,7 @@ function createStyles(theme) {
       paddingHorizontal: 72,
       paddingVertical: 20,
       borderRadius: 18,
+      alignItems: 'center',
       shadowColor: theme.purple,
       shadowOpacity: 0.75,
       shadowRadius: 20,
@@ -278,6 +319,25 @@ function createStyles(theme) {
       fontSize: 30,
       color: '#FFFFFF',
       letterSpacing: 8,
+    },
+    playGroup: {
+      alignItems: 'center',
+      gap: 10,
+    },
+    playSubtext: {
+      fontFamily: 'BadUnicorn',
+      fontSize: 16,
+      color: '#FFFFFF',
+      letterSpacing: 3,
+      textAlign: 'center',
+      opacity: 0.9,
+    },
+    startOverText: {
+      fontFamily: 'BadUnicorn',
+      fontSize: 14,
+      color: theme.textSecondary,
+      letterSpacing: 3,
+      textDecorationLine: 'underline',
     },
     modeGroup: {
       alignItems: 'center',

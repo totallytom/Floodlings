@@ -3,7 +3,7 @@ import { AccessibilityInfo, Platform } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Haptics from 'expo-haptics';
 import { generateBoard, isAdjacent, swapCells, wouldMatch, resolveBoard } from '../gameLogic';
-import { getLevelConfig, getFreeModeConfig, getZenModeConfig, getRescueLevelConfig, FREE_MODE_SECONDS, starsForScore, COMBO_LABELS, LOW_MOVES_THRESHOLD } from '../constants';
+import { getLevelConfig, getFreeModeConfig, getZenModeConfig, getRescueLevelConfig, FREE_MODE_SECONDS, starsForScore, COMBO_LABELS, LOW_MOVES_THRESHOLD, isGreatMove } from '../constants';
 import { useGameSounds } from './useGameSounds';
 import { useAds } from './useAds';
 
@@ -13,6 +13,18 @@ const ZEN_HS_KEY = 'cf_zen_highscore';
 const RESCUE_HS_KEY = 'cf_rescue_highscore';
 const BEST_LEVEL_KEY = 'cf_best_level';
 const RESCUE_BEST_LEVEL_KEY = 'cf_rescue_best_level';
+// Checkpoints for the two level-based modes: the level the player is on and the
+// run score they had when it started, so Continue picks up exactly there.
+const LEVELS_PROGRESS_KEY = 'cf_levels_progress';
+const RESCUE_PROGRESS_KEY = 'cf_rescue_progress';
+// Best star rating per level number, e.g. { "1": 3, "2": 1 }.
+const LEVELS_STARS_KEY = 'cf_levels_stars';
+const RESCUE_STARS_KEY = 'cf_rescue_stars';
+const START_PROGRESS = { level: 1, score: 0 };
+
+function parseJSON(raw, fallback) {
+  try { return raw ? JSON.parse(raw) : fallback; } catch { return fallback; }
+}
 
 // accessibilityLiveRegion (used elsewhere for the same announcements) is Android-only;
 // iOS VoiceOver needs an explicit announcement instead. Android already gets these via
@@ -33,6 +45,11 @@ export default function useGame({ soundEnabled = true, adsReady = false } = {}) 
   const [levelScore, setLevelScore] = useState(0);
   const [rescueCount, setRescueCount] = useState(0);
   const [combo, setCombo] = useState(0);
+  const [streak, setStreak] = useState(0);
+  const [levelsProgress, setLevelsProgress] = useState(START_PROGRESS);
+  const [rescueProgress, setRescueProgress] = useState(START_PROGRESS);
+  const [levelsStars, setLevelsStars] = useState({});
+  const [rescueStars, setRescueStars] = useState({});
   const [phase, setPhase] = useState('playing'); // intro | playing | resolving | cleared | failed
   const [paused, setPaused] = useState(false);
   const [highScore, setHighScore] = useState(0);
@@ -55,6 +72,8 @@ export default function useGame({ soundEnabled = true, adsReady = false } = {}) 
   const levelScoreRef = useRef(0);
   const rescueCountRef = useRef(0);
   const freeTimeLeftRef = useRef(FREE_MODE_SECONDS);
+  const streakRef = useRef(0);
+  const starsRef = useRef({ levels: {}, rescue: {} });
   const configRef = useRef(getLevelConfig(1));
 
   useEffect(() => { modeRef.current = mode; }, [mode]);
@@ -65,6 +84,7 @@ export default function useGame({ soundEnabled = true, adsReady = false } = {}) 
   useEffect(() => { levelScoreRef.current = levelScore; }, [levelScore]);
   useEffect(() => { rescueCountRef.current = rescueCount; }, [rescueCount]);
   useEffect(() => { freeTimeLeftRef.current = freeTimeLeft; }, [freeTimeLeft]);
+  useEffect(() => { streakRef.current = streak; }, [streak]);
 
   useEffect(() => {
     AsyncStorage.getItem(HS_KEY).then(val => {
@@ -85,6 +105,43 @@ export default function useGame({ soundEnabled = true, adsReady = false } = {}) 
     AsyncStorage.getItem(RESCUE_BEST_LEVEL_KEY).then(val => {
       if (val) setRescueBestLevel(parseInt(val, 10));
     });
+    // Players from before checkpoints existed only have cf_best_level (saved on
+    // every level start, so it's the level they were on) - resume them there.
+    AsyncStorage.multiGet([LEVELS_PROGRESS_KEY, BEST_LEVEL_KEY, RESCUE_PROGRESS_KEY, RESCUE_BEST_LEVEL_KEY, LEVELS_STARS_KEY, RESCUE_STARS_KEY])
+      .then(([[, lp], [, bl], [, rp], [, rbl], [, ls], [, rs]]) => {
+        setLevelsProgress(parseJSON(lp, null) ?? { level: bl ? parseInt(bl, 10) : 1, score: 0 });
+        setRescueProgress(parseJSON(rp, null) ?? { level: rbl ? parseInt(rbl, 10) : 1, score: 0 });
+        starsRef.current = { levels: parseJSON(ls, {}), rescue: parseJSON(rs, {}) };
+        setLevelsStars(starsRef.current.levels);
+        setRescueStars(starsRef.current.rescue);
+      });
+  }, []);
+
+  const saveProgress = useCallback((which, lvl, runScore) => {
+    const progress = { level: lvl, score: runScore };
+    if (which === 'rescue') {
+      setRescueProgress(progress);
+      AsyncStorage.setItem(RESCUE_PROGRESS_KEY, JSON.stringify(progress));
+    } else {
+      setLevelsProgress(progress);
+      AsyncStorage.setItem(LEVELS_PROGRESS_KEY, JSON.stringify(progress));
+    }
+  }, []);
+
+  // Keeps the best rating per level - replaying a level for fewer stars never
+  // lowers it.
+  const saveStars = useCallback((which, lvl, stars) => {
+    const current = starsRef.current[which];
+    if ((current[lvl] || 0) >= stars) return;
+    const next = { ...current, [lvl]: stars };
+    starsRef.current = { ...starsRef.current, [which]: next };
+    if (which === 'rescue') {
+      setRescueStars(next);
+      AsyncStorage.setItem(RESCUE_STARS_KEY, JSON.stringify(next));
+    } else {
+      setLevelsStars(next);
+      AsyncStorage.setItem(LEVELS_STARS_KEY, JSON.stringify(next));
+    }
   }, []);
 
   const saveHighScore = useCallback(async (newScore) => {
@@ -141,7 +198,7 @@ export default function useGame({ soundEnabled = true, adsReady = false } = {}) 
     }
   }, []);
 
-  const startNewLevel = useCallback((lvl) => {
+  const startNewLevel = useCallback((lvl, runScore = scoreRef.current) => {
     const cfg = getLevelConfig(lvl);
     configRef.current = cfg;
     const newBoard = generateBoard(cfg.rows, cfg.cols, cfg.numTypes);
@@ -150,6 +207,7 @@ export default function useGame({ soundEnabled = true, adsReady = false } = {}) 
     setMovesLeft(cfg.moves);
     setLevelScore(0);
     setCombo(0);
+    setStreak(0);
     // 'intro' holds the board (Board.js only accepts swipes during 'playing')
     // until the player has seen this level's target score/move count and taps
     // Start - levels vary a lot in what they demand, so that's worth reading
@@ -157,7 +215,8 @@ export default function useGame({ soundEnabled = true, adsReady = false } = {}) 
     setPhase('intro');
     setPendingResolution(null);
     saveBestLevel(lvl);
-  }, [saveBestLevel]);
+    saveProgress('levels', lvl, runScore);
+  }, [saveBestLevel, saveProgress]);
 
   const startPlaying = useCallback(() => {
     setPhase('playing');
@@ -172,6 +231,7 @@ export default function useGame({ soundEnabled = true, adsReady = false } = {}) 
     setScore(0);
     setLevelScore(0);
     setCombo(0);
+    setStreak(0);
     setFreeTimeLeft(FREE_MODE_SECONDS);
     // Same 'intro' hold as startNewLevel - see the target/moves comment there;
     // here it's so the player sees the 3:30 budget and their best before it starts.
@@ -190,6 +250,7 @@ export default function useGame({ soundEnabled = true, adsReady = false } = {}) 
     setScore(0);
     setLevelScore(0);
     setCombo(0);
+    setStreak(0);
     // Zen has no clock and no fail state - the only way out is Return to Menu
     // (via the pause overlay), which saves the score same as any other mode.
     setPhase('intro');
@@ -198,7 +259,7 @@ export default function useGame({ soundEnabled = true, adsReady = false } = {}) 
     setScreen('game');
   }, []);
 
-  const startRescueLevel = useCallback((lvl) => {
+  const startRescueLevel = useCallback((lvl, runScore = scoreRef.current) => {
     const cfg = getRescueLevelConfig(lvl);
     configRef.current = cfg;
     const newBoard = generateBoard(cfg.rows, cfg.cols, cfg.numTypes);
@@ -208,26 +269,42 @@ export default function useGame({ soundEnabled = true, adsReady = false } = {}) 
     setLevelScore(0);
     setRescueCount(0);
     setCombo(0);
+    setStreak(0);
     // Same 'intro' hold as startNewLevel - lets the player see which animal and
     // how many they need before the move count starts ticking down.
     setPhase('intro');
     setPendingResolution(null);
     saveRescueBestLevel(lvl);
-  }, [saveRescueBestLevel]);
+    saveProgress('rescue', lvl, runScore);
+  }, [saveRescueBestLevel, saveProgress]);
 
+  // Resumes from the saved checkpoint (level 1 on a fresh install).
   const startRescueGame = useCallback(() => {
+    setMode('rescue');
+    setScore(rescueProgress.score);
+    setCanContinue(true);
+    setPaused(false);
+    startRescueLevel(rescueProgress.level, rescueProgress.score);
+    setScreen('game');
+  }, [startRescueLevel, rescueProgress]);
+
+  const restartRescueGame = useCallback(() => {
     setMode('rescue');
     setScore(0);
     setCanContinue(true);
     setPaused(false);
-    startRescueLevel(1);
+    startRescueLevel(1, 0);
     setScreen('game');
   }, [startRescueLevel]);
 
+  // A failed run keeps its level but not its score - Try Again (or Continue from
+  // home) replays that same level from 0, while the rewarded-ad Continue keeps the
+  // score (it's still in memory and gets re-checkpointed by startNewLevel).
   const endGame = useCallback(() => {
     saveHighScore(scoreRef.current);
+    saveProgress('levels', levelRef.current, 0);
     setScreen('gameover');
-  }, [saveHighScore]);
+  }, [saveHighScore, saveProgress]);
 
   const endFreeGame = useCallback(() => {
     saveFreeBestScore(scoreRef.current);
@@ -236,8 +313,9 @@ export default function useGame({ soundEnabled = true, adsReady = false } = {}) 
 
   const endRescueGame = useCallback(() => {
     saveRescueBestScore(scoreRef.current);
+    saveProgress('rescue', levelRef.current, 0);
     setScreen('gameover');
-  }, [saveRescueBestScore]);
+  }, [saveRescueBestScore, saveProgress]);
 
   const handleFreeTimeUp = useCallback(() => {
     playFailed();
@@ -262,12 +340,22 @@ export default function useGame({ soundEnabled = true, adsReady = false } = {}) 
     }
   }, [freeTimeLeft, mode, phase, screen, handleFreeTimeUp]);
 
+  // Resumes from the saved checkpoint (level 1 on a fresh install).
   const startGame = useCallback(() => {
+    setMode('levels');
+    setScore(levelsProgress.score);
+    setCanContinue(true);
+    setPaused(false);
+    startNewLevel(levelsProgress.level, levelsProgress.score);
+    setScreen('game');
+  }, [startNewLevel, levelsProgress]);
+
+  const restartGame = useCallback(() => {
     setMode('levels');
     setScore(0);
     setCanContinue(true);
     setPaused(false);
-    startNewLevel(1);
+    startNewLevel(1, 0);
     setScreen('game');
   }, [startNewLevel]);
 
@@ -321,6 +409,10 @@ export default function useGame({ soundEnabled = true, adsReady = false } = {}) 
       if (rescueCountRef.current >= cfg.targetCount) {
         const stars = starsForScore(rescueCountRef.current, cfg.targetCount);
         setLevelStats({ stars });
+        saveStars('rescue', levelRef.current, stars);
+        // Checkpoint the next level now rather than when it starts, so quitting
+        // during the clear celebration or the ad doesn't lose this clear.
+        saveProgress('rescue', levelRef.current + 1, scoreRef.current);
         setPhase('cleared');
         playClear();
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
@@ -344,6 +436,8 @@ export default function useGame({ soundEnabled = true, adsReady = false } = {}) 
     if (levelScoreRef.current >= cfg.targetScore) {
       const stars = starsForScore(levelScoreRef.current, cfg.targetScore);
       setLevelStats({ stars });
+      saveStars('levels', levelRef.current, stars);
+      saveProgress('levels', levelRef.current + 1, scoreRef.current);
       setPhase('cleared');
       playClear();
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
@@ -361,7 +455,7 @@ export default function useGame({ soundEnabled = true, adsReady = false } = {}) 
       setPhase('playing');
       if (movesLeftRef.current === LOW_MOVES_THRESHOLD) playLowMoves();
     }
-  }, [startNewLevel, startRescueLevel, trackLevelClear, endGame, endRescueGame, playClear, playFailed, playLowMoves]);
+  }, [startNewLevel, startRescueLevel, trackLevelClear, endGame, endRescueGame, saveStars, saveProgress, playClear, playFailed, playLowMoves]);
 
   const attemptSwap = useCallback((a, b) => {
     const currentBoard = boardRef.current;
@@ -381,6 +475,10 @@ export default function useGame({ soundEnabled = true, adsReady = false } = {}) 
 
     const { finalBoard, steps, totalScore, maxCascade, totalTypeCounts } = resolveBoard(swapped, cfg.numTypes);
     const comboTier = Math.min(3, Math.max(0, maxCascade - 1));
+    // Great moves (cascade or 4+ match) build the streak; any plain move breaks it.
+    const newStreak = isGreatMove(steps) ? streakRef.current + 1 : 0;
+    streakRef.current = newStreak;
+    setStreak(newStreak);
     setCombo(comboTier);
     setScore(s => s + totalScore);
     setLevelScore(s => s + totalScore);
@@ -389,7 +487,7 @@ export default function useGame({ soundEnabled = true, adsReady = false } = {}) 
       if (rescued > 0) setRescueCount(c => c + rescued);
     }
     setBoard(finalBoard);
-    setPendingResolution({ swappedBoard: swapped, steps, finalBoard });
+    setPendingResolution({ swappedBoard: swapped, steps, finalBoard, streak: newStreak });
 
     if (comboTier > 0) {
       playCombo();
@@ -416,11 +514,12 @@ export default function useGame({ soundEnabled = true, adsReady = false } = {}) 
   return {
     screen, setScreen,
     mode, level, score, board,
-    movesLeft, levelScore, rescueCount, combo,
+    movesLeft, levelScore, rescueCount, combo, streak,
+    levelsProgress, rescueProgress, levelsStars, rescueStars,
     phase, highScore, freeBestScore, zenBestScore, rescueBestScore, freeTimeLeft,
     bestLevel, rescueBestLevel,
     config, levelStats, pendingResolution,
-    startGame, startFreeGame, startZenGame, startRescueGame, startPlaying, attemptSwap, finishResolution,
+    startGame, restartGame, startFreeGame, startZenGame, startRescueGame, restartRescueGame, startPlaying, attemptSwap, finishResolution,
     togglePause, returnToMenu,
     paused, canContinue, onContinue, rewLoaded,
   };

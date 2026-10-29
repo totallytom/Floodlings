@@ -3,6 +3,7 @@ import { View, Image, Animated, Easing, PanResponder, Dimensions, StyleSheet } f
 import { iconForType, colorForType } from '../animals';
 import { swapCells } from '../gameLogic';
 import { useReduceMotion } from '../hooks/useReduceMotion';
+import MatchBurst, { MATCH_FX_LIFETIME_MS } from './MatchFX';
 
 const PADDING = 16;
 const GAP = 4;
@@ -144,6 +145,13 @@ function Tile({ id, type, row, col, tileSize, popping, shakeNonce, active, reduc
           { width: swatchSize, height: swatchSize, borderRadius: swatchSize * 0.22, backgroundColor: colorForType(type) },
         ]}
       >
+        {/* Glossy highlight across the top half - gives the flat swatches a
+            candy-like shine. Absolutely positioned so it doesn't affect the
+            icon's centering. */}
+        <View
+          pointerEvents="none"
+          style={[styles.shine, { height: swatchSize * 0.42, borderRadius: swatchSize * 0.2 }]}
+        />
         <Image
           source={iconForType(type)}
           style={{ width: tileSize * 0.72, height: tileSize * 0.72 }}
@@ -155,8 +163,10 @@ function Tile({ id, type, row, col, tileSize, popping, shakeNonce, active, reduc
   );
 }
 
-export default function Board({ board, movesLeft, phase, paused, pendingResolution, onSwap, onResolutionDone, maxWidth, maxHeight }) {
+export default function Board({ board, movesLeft, phase, paused, pendingResolution, onSwap, onResolutionDone, onCascadeStep, maxWidth, maxHeight }) {
   const reduceMotion = useReduceMotion();
+  const [fx, setFx] = useState([]);
+  const fxKeyRef = useRef(0);
   const [optimisticBoard, setOptimisticBoard] = useState(null);
   const [poppingKeys, setPoppingKeys] = useState(new Set());
   const [shakeInfo, setShakeInfo] = useState(null);
@@ -213,9 +223,24 @@ export default function Board({ board, movesLeft, phase, paused, pendingResoluti
       setOptimisticBoard(pendingResolution.swappedBoard);
       await wait(reduceMotion ? 1 : SWAP_SETTLE_MS);
 
+      let before = pendingResolution.swappedBoard;
       for (const step of pendingResolution.steps) {
         if (cancelled) return;
         setPoppingKeys(new Set(step.matchedCells.map(([r, c]) => `${r},${c}`)));
+
+        const key = ++fxKeyRef.current;
+        const cells = step.matchedCells.map(([r, c]) => ({
+          x: c * (tileSize + GAP) + tileSize / 2,
+          y: r * (tileSize + GAP) + tileSize / 2,
+          color: colorForType(before[r][c].type),
+        }));
+        setFx(list => [...list, { key, cells, value: step.scoreGained, cascadeIndex: step.cascadeIndex }]);
+        // Not tied to `cancelled` - an effect that's already on screen should
+        // finish and clean itself up even if the resolution gets interrupted.
+        setTimeout(() => setFx(list => list.filter(f => f.key !== key)), MATCH_FX_LIFETIME_MS);
+        onCascadeStep?.(step);
+        before = step.boardAfter;
+
         await wait(reduceMotion ? 1 : POP_MS);
         if (cancelled) return;
 
@@ -239,6 +264,8 @@ export default function Board({ board, movesLeft, phase, paused, pendingResoluti
     })();
 
     return () => { cancelled = true; };
+    // tileSize/onCascadeStep deliberately left out - a change to either must not
+    // restart (and so replay) a cascade that's already animating.
   }, [pendingResolution, reduceMotion, onResolutionDone]);
 
   if (!displayBoard) return null;
@@ -273,6 +300,16 @@ export default function Board({ board, movesLeft, phase, paused, pendingResoluti
           onSwipe={trySwap}
         />
       ))}
+      {fx.map(f => (
+        <MatchBurst
+          key={f.key}
+          cells={f.cells}
+          value={f.value}
+          cascadeIndex={f.cascadeIndex}
+          tileSize={tileSize}
+          reduceMotion={reduceMotion}
+        />
+      ))}
     </View>
   );
 }
@@ -289,5 +326,18 @@ const styles = StyleSheet.create({
   swatch: {
     alignItems: 'center',
     justifyContent: 'center',
+    overflow: 'hidden',
+    // Darker bottom lip + light top rim reads as a raised, glossy tile.
+    borderBottomWidth: 3,
+    borderBottomColor: 'rgba(0, 0, 0, 0.22)',
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(255, 255, 255, 0.45)',
+  },
+  shine: {
+    position: 'absolute',
+    top: 2,
+    left: '12%',
+    right: '12%',
+    backgroundColor: 'rgba(255, 255, 255, 0.28)',
   },
 });

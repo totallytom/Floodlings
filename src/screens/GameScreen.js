@@ -7,7 +7,7 @@ import ObjectiveBar from '../components/ObjectiveBar';
 import RescueObjectiveBar from '../components/RescueObjectiveBar';
 import FreeModeTimer from '../components/FreeModeTimer';
 import GameBackdrop from '../components/GameBackdrop';
-import { LOW_MOVES_THRESHOLD, FREE_MODE_SECONDS, FREE_MODE_URGENT_THRESHOLD } from '../constants';
+import { LOW_MOVES_THRESHOLD, FREE_MODE_SECONDS, FREE_MODE_URGENT_THRESHOLD, COMBO_CALLOUTS, COMBO_CALLOUT_COLORS } from '../constants';
 import { iconForType, nameForType } from '../animals';
 import { useReduceMotion } from '../hooks/useReduceMotion';
 import { useTheme } from '../hooks/useTheme';
@@ -18,7 +18,7 @@ import { useTheme } from '../hooks/useTheme';
 const FRAME_PADDING = 26;
 const FRAME_BORDER = 2;
 
-function TopBar({ styles, mode, level, score, movesLeft, combo, paused, onPause }) {
+function TopBar({ styles, mode, level, score, movesLeft, combo, streak, paused, onPause }) {
   return (
     <View style={styles.topBar}>
       <HUD
@@ -27,6 +27,7 @@ function TopBar({ styles, mode, level, score, movesLeft, combo, paused, onPause 
         score={score}
         movesLeft={movesLeft}
         combo={combo}
+        streak={streak}
         paused={paused}
         onPause={onPause}
       />
@@ -205,20 +206,110 @@ function IntroOverlay({ styles, mode, level, config, freeBestScore, zenBestScore
   );
 }
 
-function Stars({ styles, count }) {
+// Earned stars slam in one after another; unearned ones just fade in dim.
+function AnimatedStar({ styles, earned, index, reduceMotion }) {
+  const anim = useRef(new Animated.Value(reduceMotion ? 1 : 0)).current;
+
+  useEffect(() => {
+    if (reduceMotion) return;
+    Animated.sequence([
+      Animated.delay(250 + index * 220),
+      earned
+        ? Animated.spring(anim, { toValue: 1, friction: 4, tension: 140, useNativeDriver: true })
+        : Animated.timing(anim, { toValue: 1, duration: 200, useNativeDriver: true }),
+    ]).start();
+  }, []);
+
+  return (
+    <Animated.Text
+      style={[
+        styles.star,
+        !earned && styles.starEmpty,
+        {
+          opacity: anim.interpolate({ inputRange: [0, 0.3, 1], outputRange: [0, 1, 1] }),
+          transform: earned
+            ? [
+                { scale: anim.interpolate({ inputRange: [0, 1], outputRange: [2.6, 1] }) },
+                { rotate: anim.interpolate({ inputRange: [0, 1], outputRange: ['-90deg', '0deg'] }) },
+              ]
+            : [],
+        },
+      ]}
+      maxFontSizeMultiplier={1.3}
+    >★</Animated.Text>
+  );
+}
+
+function Stars({ styles, count, reduceMotion }) {
   return (
     <View style={styles.starsRow} accessible accessibilityLabel={`${count} out of 3 stars`}>
       {[0, 1, 2].map(i => (
-        <Text key={i} style={[styles.star, i >= count && styles.starEmpty]} maxFontSizeMultiplier={1.3}>★</Text>
+        <AnimatedStar key={i} styles={styles} earned={i < count} index={i} reduceMotion={reduceMotion} />
       ))}
     </View>
   );
 }
 
+// Big "GREAT!"-style word that bursts over the board for each cascade step.
+// Keyed by nonce in the parent so each step remounts and replays it.
+function ComboCallout({ styles, tier, streak, reduceMotion }) {
+  const anim = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    Animated.sequence([
+      reduceMotion
+        ? Animated.timing(anim, { toValue: 1, duration: 1, useNativeDriver: true })
+        : Animated.spring(anim, { toValue: 1, friction: 5, tension: 120, useNativeDriver: true }),
+      Animated.delay(450),
+      Animated.timing(anim, { toValue: 2, duration: 250, useNativeDriver: true }),
+    ]).start();
+  }, []);
+
+  const word = COMBO_CALLOUTS[Math.min(tier, COMBO_CALLOUTS.length - 1)];
+  const color = COMBO_CALLOUT_COLORS[Math.min(tier, COMBO_CALLOUT_COLORS.length - 1)];
+  // Alternate the tilt so back-to-back callouts don't look identical.
+  const tilt = tier % 2 === 0 ? '-6deg' : '5deg';
+
+  return (
+    <Animated.View
+      pointerEvents="none"
+      style={[
+        styles.calloutWrap,
+        {
+          opacity: anim.interpolate({ inputRange: [0, 0.2, 1, 2], outputRange: [0, 1, 1, 0] }),
+          transform: [
+            { scale: anim.interpolate({ inputRange: [0, 1, 2], outputRange: [0.3, 1, reduceMotion ? 1 : 1.25] }) },
+            { rotate: reduceMotion ? '0deg' : tilt },
+          ],
+        },
+      ]}
+    >
+      <Text
+        style={[styles.calloutText, { color, fontSize: 40 + Math.min(tier, 5) * 4, textShadowColor: color }]}
+        allowFontScaling={false}
+        accessible={false}
+      >
+        {word}
+      </Text>
+      {streak >= 2 && (
+        <Text style={styles.calloutStreak} allowFontScaling={false}>🔥 STREAK ×{streak}</Text>
+      )}
+    </Animated.View>
+  );
+}
+
+// Streak tiers for the board frame's glow ring - none below 2.
+const STREAK_GLOW_COLORS = ['#FF9F0A', '#FF2D55', '#BF5AF2'];
+function streakGlowColor(streak) {
+  if (streak >= 6) return STREAK_GLOW_COLORS[2];
+  if (streak >= 4) return STREAK_GLOW_COLORS[1];
+  return STREAK_GLOW_COLORS[0];
+}
+
 export default function GameScreen({
   mode, level, score, board, movesLeft, levelScore, rescueCount,
   freeTimeLeft, freeBestScore, zenBestScore,
-  combo, phase, config, pendingResolution,
+  combo, streak, phase, config, pendingResolution,
   startPlaying, attemptSwap, finishResolution,
   paused, togglePause, returnToMenu,
   levelStats,
@@ -229,6 +320,38 @@ export default function GameScreen({
   const vignetteOpacity = useRef(new Animated.Value(0)).current;
   const loopRef = useRef(null);
   const [boardArea, setBoardArea] = useState({ width: 0, height: 0 });
+  const [callout, setCallout] = useState(null);
+  const calloutNonce = useRef(0);
+  const shakeX = useRef(new Animated.Value(0)).current;
+  const flash = useRef(new Animated.Value(0)).current;
+  const streakGlow = useRef(new Animated.Value(0)).current;
+
+  // Fired by Board as each cascade step starts popping. Step 0 (the swap's own
+  // match) only earns a callout for a 4+ match; every chained step gets one,
+  // escalating NICE! -> LEGENDARY!, plus a flash and (from step 2) a shake.
+  const onCascadeStep = useCallback((step) => {
+    const bigMatch = step.runs.some(r => r.length >= 4);
+    if (step.cascadeIndex === 0 && !bigMatch) return;
+    calloutNonce.current += 1;
+    setCallout({ nonce: calloutNonce.current, tier: step.cascadeIndex });
+
+    if (reduceMotion) return;
+    flash.setValue(Math.min(0.15 + step.cascadeIndex * 0.08, 0.4));
+    Animated.timing(flash, { toValue: 0, duration: 350, useNativeDriver: true }).start();
+    if (step.cascadeIndex >= 2) {
+      const mag = Math.min(4 + step.cascadeIndex * 2, 12);
+      Animated.sequence([
+        Animated.timing(shakeX, { toValue: mag, duration: 40, useNativeDriver: true }),
+        Animated.timing(shakeX, { toValue: -mag, duration: 60, useNativeDriver: true }),
+        Animated.timing(shakeX, { toValue: mag / 2, duration: 50, useNativeDriver: true }),
+        Animated.timing(shakeX, { toValue: 0, duration: 40, useNativeDriver: true }),
+      ]).start();
+    }
+  }, [reduceMotion]);
+
+  useEffect(() => {
+    Animated.timing(streakGlow, { toValue: streak >= 2 ? 1 : 0, duration: 300, useNativeDriver: true }).start();
+  }, [streak >= 2]);
 
   const onBoardContainerLayout = useCallback((e) => {
     const { width, height } = e.nativeEvent.layout;
@@ -295,6 +418,7 @@ export default function GameScreen({
           score={score}
           movesLeft={movesLeft}
           combo={combo}
+          streak={streak}
           paused={paused}
           onPause={togglePause}
         />
@@ -314,7 +438,11 @@ export default function GameScreen({
 
         <View style={styles.boardContainer} onLayout={onBoardContainerLayout}>
           {boardArea.width > 0 && boardArea.height > 0 && (
-            <View style={styles.boardFrame}>
+            <Animated.View style={[styles.boardFrame, { transform: [{ translateX: shakeX }] }]}>
+              <Animated.View
+                pointerEvents="none"
+                style={[styles.streakRing, { borderColor: streakGlowColor(streak), shadowColor: streakGlowColor(streak), opacity: streakGlow }]}
+              />
               <Board
                 board={board}
                 maxWidth={boardMaxWidth}
@@ -325,8 +453,19 @@ export default function GameScreen({
                 pendingResolution={pendingResolution}
                 onSwap={attemptSwap}
                 onResolutionDone={finishResolution}
+                onCascadeStep={onCascadeStep}
               />
-            </View>
+              <Animated.View pointerEvents="none" style={[styles.boardFlash, { opacity: flash }]} />
+            </Animated.View>
+          )}
+          {callout && (
+            <ComboCallout
+              key={callout.nonce}
+              styles={styles}
+              tier={callout.tier}
+              streak={streak}
+              reduceMotion={reduceMotion}
+            />
           )}
         </View>
       </View>
@@ -358,7 +497,7 @@ export default function GameScreen({
               accessibilityLiveRegion="assertive"
               accessibilityLabel="Level complete!"
             >LEVEL COMPLETE!</Text>
-            <Stars styles={styles} count={levelStats.stars} />
+            <Stars styles={styles} count={levelStats.stars} reduceMotion={reduceMotion} />
           </View>
         </View>
       )}
@@ -403,6 +542,41 @@ function createStyles(theme) {
     shadowRadius: 12,
     shadowOffset: { width: 0, height: 4 },
     elevation: 8,
+  },
+  streakRing: {
+    ...StyleSheet.absoluteFillObject,
+    borderRadius: 20,
+    borderWidth: 3,
+    shadowOpacity: 0.9,
+    shadowRadius: 14,
+    shadowOffset: { width: 0, height: 0 },
+  },
+  boardFlash: {
+    ...StyleSheet.absoluteFillObject,
+    borderRadius: 20,
+    backgroundColor: '#FFFFFF',
+  },
+  calloutWrap: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    alignItems: 'center',
+    zIndex: 30,
+  },
+  calloutText: {
+    fontFamily: 'BadUnicorn',
+    letterSpacing: 3,
+    textShadowOffset: { width: 0, height: 0 },
+    textShadowRadius: 16,
+  },
+  calloutStreak: {
+    fontFamily: 'BadUnicorn',
+    fontSize: 18,
+    color: '#FFFFFF',
+    letterSpacing: 2,
+    textShadowColor: 'rgba(0, 0, 0, 0.8)',
+    textShadowOffset: { width: 0, height: 2 },
+    textShadowRadius: 4,
   },
   vignette: {
     position: 'absolute',
