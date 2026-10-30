@@ -1,0 +1,6 @@
+{
+  "ios": {
+    "CFBundleDisplayName": "Floodlings",
+    "NSUserTrackingUsageDescription": "이 식별자는 맞춤형 광고를 보여 드리는 데 사용됩니다."
+  }
+}

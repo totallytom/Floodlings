@@ -2,6 +2,8 @@ import React, { useEffect, useMemo, useRef } from 'react';
 import { View, Text, StyleSheet, Animated, Easing } from 'react-native';
 import { useTheme } from '../hooks/useTheme';
 import { useReduceMotion } from '../hooks/useReduceMotion';
+import { t } from '../i18n';
+import { DISPLAY_FONT, lineHeightFor } from '../fonts';
 
 const VISIBLE_BEHIND = 3;
 const VISIBLE_AHEAD = 1;
@@ -43,7 +45,7 @@ export default function LevelPath({ currentLevel, stars }) {
     <View
       style={styles.container}
       accessible
-      accessibilityLabel={`On level ${currentLevel}. ${totalStars} stars earned.`}
+      accessibilityLabel={t('path.a11y', { n: currentLevel, stars: totalStars })}
     >
       <View style={styles.path}>
         {levels.map((l, i) => {
@@ -82,7 +84,7 @@ export default function LevelPath({ currentLevel, stars }) {
         })}
       </View>
       {totalStars > 0 && (
-        <Text style={styles.totalStars} allowFontScaling={false}>★ {totalStars} STARS EARNED</Text>
+        <Text style={styles.totalStars} allowFontScaling={false}>{t('path.starsEarned', { stars: totalStars })}</Text>
       )}
     </View>
   );
@@ -149,16 +151,18 @@ function createStyles(theme) {
       backgroundColor: theme.purple,
     },
     nodeText: {
-      fontFamily: 'BadUnicorn',
+      fontFamily: DISPLAY_FONT,
       fontSize: 18,
+      lineHeight: lineHeightFor(18),
       color: '#FFFFFF',
     },
     nodeLockedText: {
       fontSize: 14,
     },
     nodeCurrentText: {
-      fontFamily: 'BadUnicorn',
+      fontFamily: DISPLAY_FONT,
       fontSize: 20,
+      lineHeight: lineHeightFor(20),
       color: '#FFFFFF',
     },
     miniStars: {
@@ -167,8 +171,9 @@ function createStyles(theme) {
       letterSpacing: -1,
     },
     totalStars: {
-      fontFamily: 'BadUnicorn',
+      fontFamily: DISPLAY_FONT,
       fontSize: 14,
+      lineHeight: lineHeightFor(14),
       color: theme.accentOrange,
       letterSpacing: 2,
     },

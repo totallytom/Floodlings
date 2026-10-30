@@ -2,7 +2,7 @@
   "expo": {
     "name": "Floodlings",
     "slug": "ColorFill",
-    "version": "1.0.2",
+    "version": "1.0.3",
     "orientation": "portrait",
     "scheme": "colorflood",
     "icon": "./assets/icon.png",
@@ -11,8 +11,17 @@
       "supportsTablet": false,
       "bundleIdentifier": "com.amuletstudios.colorfill",
       "infoPlist": {
-        "ITSAppUsesNonExemptEncryption": false
+        "ITSAppUsesNonExemptEncryption": false,
+        "CFBundleLocalizations": ["en", "ja", "de", "ko", "es", "pt"],
+        "CFBundleDevelopmentRegion": "en"
       }
+    },
+    "locales": {
+      "ja": "./languages/ja.json",
+      "de": "./languages/de.json",
+      "ko": "./languages/ko.json",
+      "es": "./languages/es.json",
+      "pt": "./languages/pt.json"
     },
     "android": {
       "package": "com.amuletstudios.colorfill",
@@ -55,7 +64,8 @@
           }
         }
       ],
-      "expo-font"
+      "expo-font",
+      "expo-localization"
     ],
     "extra": {
       "eas": {

@@ -1,6 +1,7 @@
 import React, { useEffect, useRef } from 'react';
 import { Animated, Easing, StyleSheet, Text } from 'react-native';
 import { COMBO_CALLOUT_COLORS } from '../constants';
+import { DISPLAY_FONT } from '../fonts';
 
 const PARTICLES_PER_CELL = 5;
 // Per cascade step - a huge clear thins out to fewer sparks per tile instead of
@@ -92,7 +93,7 @@ function ScorePopup({ x, y, value, cascadeIndex, reduceMotion }) {
       ]}
     >
       <Text
-        style={[styles.popupText, { fontSize, color }]}
+        style={[styles.popupText, { fontFamily: DISPLAY_FONT, fontSize, color }]}
         allowFontScaling={false}
         accessible={false}
       >
@@ -134,8 +135,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     zIndex: 20,
   },
+  // fontFamily is applied inline at render, so it follows a language switch.
   popupText: {
-    fontFamily: 'BadUnicorn',
     textShadowColor: 'rgba(0, 0, 0, 0.75)',
     textShadowOffset: { width: 0, height: 2 },
     textShadowRadius: 4,

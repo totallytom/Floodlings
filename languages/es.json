@@ -1,0 +1,6 @@
+{
+  "ios": {
+    "CFBundleDisplayName": "Floodlings",
+    "NSUserTrackingUsageDescription": "Este identificador se usará para mostrarte anuncios personalizados."
+  }
+}

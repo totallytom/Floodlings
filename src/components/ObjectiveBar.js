@@ -3,6 +3,8 @@ import { View, Text, Animated, Easing, StyleSheet, Dimensions } from 'react-nati
 import { LOW_MOVES_THRESHOLD } from '../constants';
 import { useReduceMotion } from '../hooks/useReduceMotion';
 import { useTheme } from '../hooks/useTheme';
+import { t } from '../i18n';
+import { DISPLAY_FONT, lineHeightFor } from '../fonts';
 
 const NORMAL_HEIGHT = 5;
 const URGENT_HEIGHT = 12;
@@ -84,7 +86,7 @@ export default function ObjectiveBar({ levelScore, targetScore, movesLeft }) {
         style={[styles.track, { height, opacity }]}
         accessible={true}
         accessibilityRole="progressbar"
-        accessibilityLabel={`${levelScore.toLocaleString()} of ${targetScore.toLocaleString()} points`}
+        accessibilityLabel={t('objective.a11y', { score: levelScore.toLocaleString(), target: targetScore.toLocaleString() })}
         accessibilityValue={{ min: 0, max: targetScore, now: Math.min(levelScore, targetScore) }}
       >
         <Animated.View accessible={false} style={[styles.fill, { width, backgroundColor }]} />
@@ -100,8 +102,9 @@ function createStyles(theme) {
       marginTop: 4,
     },
     progressText: {
-      fontFamily: 'BadUnicorn',
+      fontFamily: DISPLAY_FONT,
       fontSize: 14,
+      lineHeight: lineHeightFor(14),
       color: theme.textSecondary,
       alignSelf: 'flex-end',
       marginBottom: 3,

@@ -1,0 +1,6 @@
+{
+  "ios": {
+    "CFBundleDisplayName": "Floodlings",
+    "NSUserTrackingUsageDescription": "Diese Kennung wird verwendet, um dir personalisierte Werbung anzuzeigen."
+  }
+}

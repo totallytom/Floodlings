@@ -73,13 +73,10 @@ export function starsForScore(levelScore, targetScore) {
   return 1;
 }
 
-// index 0 = no cascade, 1/2/3 = increasing tiers - shared between the HUD display
-// and the VoiceOver announcement fired from useGame.
-export const COMBO_LABELS = ['', 'COMBO ×1.5', 'COMBO ×2.5!', 'COMBO ×4!!'];
-
-// Big center-of-board callouts, indexed by cascade step (0 = the swap's own
-// match). Step 0 only gets one when it's a 4+ match - see GameScreen.
-export const COMBO_CALLOUTS = ['SWEET!', 'NICE!', 'GREAT!', 'AMAZING!', 'SPECTACULAR!', 'LEGENDARY!'];
+// Combo tier labels (1-3) and the big center-of-board callout words (indexed
+// by cascade step; 0 = the swap's own match, which only gets one for a 4+
+// match - see GameScreen) live in i18n as combo.label.N / combo.callout.N.
+// One callout color per step:
 export const COMBO_CALLOUT_COLORS = ['#30D158', '#64D2FF', '#FFD60A', '#FF9F0A', '#FF2D55', '#BF5AF2'];
 
 // Streak: consecutive "great" moves (any cascade, or a 4+ match). Purely
@@ -89,3 +86,7 @@ export function isGreatMove(steps) {
   if (steps.length >= 2) return true;
   return steps.length > 0 && steps[0].runs.some(r => r.length >= 4);
 }
+
+// Zen Mode: every ZEN_BLOOM_POINTS scored grows one flower in the Zen panel - a
+// gentle, open-ended goal for a mode that otherwise has none.
+export const ZEN_BLOOM_POINTS = 3000;

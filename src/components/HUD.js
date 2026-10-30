@@ -1,8 +1,10 @@
 import React, { useMemo, useEffect, useRef, useState } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, Animated, Easing } from 'react-native';
-import { COMBO_LABELS, LOW_MOVES_THRESHOLD } from '../constants';
+import { LOW_MOVES_THRESHOLD } from '../constants';
+import { t } from '../i18n';
 import { useTheme } from '../hooks/useTheme';
 import { useReduceMotion } from '../hooks/useReduceMotion';
+import { DISPLAY_FONT, lineHeightFor } from '../fonts';
 
 const COUNT_UP_MS = 450;
 
@@ -92,7 +94,7 @@ function StreakBadge({ streak, styles }) {
       style={[styles.streakBadge, hot && styles.streakBadgeHot, { opacity: pop, transform: [{ scale: pop }] }]}
       accessible={visible}
       accessibilityLiveRegion="polite"
-      accessibilityLabel={visible ? `Streak ${streak}` : undefined}
+      accessibilityLabel={visible ? t('hud.streakA11y', { n: streak }) : undefined}
     >
       <Animated.View
         pointerEvents="none"
@@ -100,8 +102,8 @@ function StreakBadge({ streak, styles }) {
       />
       <Text style={styles.streakFire} allowFontScaling={false}>🔥</Text>
       <View>
-        <Text style={styles.streakText} maxFontSizeMultiplier={1.3}>STREAK ×{Math.max(streak, 2)}</Text>
-        <Text style={styles.streakBonus} maxFontSizeMultiplier={1.3}>{hot ? 'ON FIRE!' : 'HEATING UP'}</Text>
+        <Text style={styles.streakText} maxFontSizeMultiplier={1.3}>{t('common.streak', { n: Math.max(streak, 2) })}</Text>
+        <Text style={styles.streakBonus} maxFontSizeMultiplier={1.3}>{hot ? t('hud.onFire') : t('hud.heatingUp')}</Text>
       </View>
     </Animated.View>
   );
@@ -120,22 +122,25 @@ export default function HUD({ mode = 'levels', level, score, movesLeft, combo, s
     <View style={styles.container}>
       <View style={styles.row}>
         <View>
-          <Text style={styles.label} maxFontSizeMultiplier={1.5}>{isLevelBased ? 'LEVEL' : 'MODE'}</Text>
-          <Text style={styles.value} maxFontSizeMultiplier={1.5}>{isLevelBased ? level : (mode === 'zen' ? 'ZEN' : 'FREE')}</Text>
+          <Text style={styles.label} maxFontSizeMultiplier={1.5}>{isLevelBased ? t('common.level') : t('hud.mode')}</Text>
+          <Text style={styles.value} maxFontSizeMultiplier={1.5}>{isLevelBased ? level : (mode === 'zen' ? t('hud.zen') : t('hud.free'))}</Text>
         </View>
 
         {/* The big per-cascade callouts over the board replaced the small combo
             label that used to sit here; this hidden text keeps Android's
-            live-region announcement of the combo tier (iOS gets it from useGame). */}
-        <View style={styles.center}>
+            live-region announcement of the combo tier (iOS gets it from useGame).
+            Absolutely positioned so the badge (even while hidden) never adds to
+            the HUD's height - the board is height-bound on phones, so every
+            extra pixel up here shrinks the tiles. */}
+        <View style={styles.center} pointerEvents="box-none">
           <StreakBadge streak={streak} styles={styles} />
           {combo > 0 ? (
             <Text
               style={styles.srOnly}
               accessibilityLiveRegion="polite"
-              accessibilityLabel={COMBO_LABELS[combo]}
+              accessibilityLabel={t(`combo.label.${combo}`)}
             >
-              {COMBO_LABELS[combo]}
+              {t(`combo.label.${combo}`)}
             </Text>
           ) : null}
         </View>
@@ -145,14 +150,14 @@ export default function HUD({ mode = 'levels', level, score, movesLeft, combo, s
             onPress={onPause}
             activeOpacity={0.7}
             accessibilityRole="button"
-            accessibilityLabel={paused ? 'Resume' : 'Pause'}
-            accessibilityHint={paused ? 'Resumes the game' : 'Pauses the game'}
+            accessibilityLabel={paused ? t('hud.resume') : t('hud.pause')}
+            accessibilityHint={paused ? t('hud.resumeHint') : t('hud.pauseHint')}
             hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
           >
             <Text style={styles.pauseIcon} allowFontScaling={false}>{paused ? '▶' : '⏸'}</Text>
           </TouchableOpacity>
-          <View accessible={true} accessibilityLabel={`Score: ${score.toLocaleString()}`}>
-            <Text accessible={false} style={[styles.label, styles.labelRight]} maxFontSizeMultiplier={1.5}>SCORE</Text>
+          <View accessible={true} accessibilityLabel={t('a11y.score', { score: score.toLocaleString() })}>
+            <Text accessible={false} style={[styles.label, styles.labelRight]} maxFontSizeMultiplier={1.5}>{t('common.score')}</Text>
             <CountUpScore value={score} style={styles.value} />
           </View>
         </View>
@@ -162,10 +167,10 @@ export default function HUD({ mode = 'levels', level, score, movesLeft, combo, s
         <View style={styles.movesRow}>
           <Text
             style={[styles.movesText, lowMoves && styles.movesOver]}
-            accessibilityLabel={`${movesLeft} moves left`}
+            accessibilityLabel={t('hud.movesLeft', { n: movesLeft })}
             maxFontSizeMultiplier={1.5}
           >
-            {movesLeft} moves left
+            {t('hud.movesLeft', { n: movesLeft })}
           </Text>
         </View>
       )}
@@ -186,21 +191,27 @@ function createStyles(theme) {
     alignItems: 'center',
   },
   label: {
-    fontFamily: 'BadUnicorn',
+    fontFamily: DISPLAY_FONT,
     color: theme.textSecondary,
     fontSize: 20,
+    lineHeight: lineHeightFor(20),
     letterSpacing: 1.5,
   },
   value: {
-    fontFamily: 'BadUnicorn',
+    fontFamily: DISPLAY_FONT,
     // Was a fixed #FFFFFF - failed WCAG AA (1.48:1) against the light-lavender
     // game screen background. hudValue flips to white for dark mode instead.
     color: theme.hudValue,
     fontSize: 24,
+    lineHeight: lineHeightFor(24),
   },
   center: {
+    position: 'absolute',
+    top: 0,
+    bottom: 0,
+    left: 0,
+    right: 0,
     alignItems: 'center',
-    minHeight: 36,
     justifyContent: 'center',
   },
   right: {
@@ -251,14 +262,16 @@ function createStyles(theme) {
   // Always on the badge's own dark fill, so fixed light colors are fine in
   // both themes.
   streakText: {
-    fontFamily: 'BadUnicorn',
+    fontFamily: DISPLAY_FONT,
     fontSize: 15,
+    lineHeight: lineHeightFor(15),
     color: '#FFD60A',
     letterSpacing: 1,
   },
   streakBonus: {
-    fontFamily: 'BadUnicorn',
+    fontFamily: DISPLAY_FONT,
     fontSize: 11,
+    lineHeight: lineHeightFor(11),
     color: '#FFFFFF',
     letterSpacing: 1,
   },
@@ -266,9 +279,10 @@ function createStyles(theme) {
     alignItems: 'center',
   },
   movesText: {
-    fontFamily: 'BadUnicorn',
+    fontFamily: DISPLAY_FONT,
     color: theme.textSecondary,
     fontSize: 20,
+    lineHeight: lineHeightFor(20),
   },
   movesOver: {
     // Underline is the non-color cue (WCAG 1.4.1) - red alone wasn't enough.

@@ -3,7 +3,8 @@ import { AccessibilityInfo, Platform } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Haptics from 'expo-haptics';
 import { generateBoard, isAdjacent, swapCells, wouldMatch, resolveBoard } from '../gameLogic';
-import { getLevelConfig, getFreeModeConfig, getZenModeConfig, getRescueLevelConfig, FREE_MODE_SECONDS, starsForScore, COMBO_LABELS, LOW_MOVES_THRESHOLD, isGreatMove } from '../constants';
+import { getLevelConfig, getFreeModeConfig, getZenModeConfig, getRescueLevelConfig, FREE_MODE_SECONDS, starsForScore, LOW_MOVES_THRESHOLD, isGreatMove } from '../constants';
+import { t } from '../i18n';
 import { useGameSounds } from './useGameSounds';
 import { useAds } from './useAds';
 
@@ -321,7 +322,7 @@ export default function useGame({ soundEnabled = true, adsReady = false } = {}) 
     playFailed();
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
     setPhase('failed');
-    announceIOS("Time's up!");
+    announceIOS(t('end.timesUpA11y'));
     setTimeout(() => endFreeGame(), 1500);
   }, [endFreeGame, playFailed]);
 
@@ -416,7 +417,7 @@ export default function useGame({ soundEnabled = true, adsReady = false } = {}) 
         setPhase('cleared');
         playClear();
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-        announceIOS(`Level complete! ${stars} out of 3 stars.`);
+        announceIOS(t('end.levelCompleteAnnounce', { stars }));
         setTimeout(() => {
           trackLevelClear(() => startRescueLevel(levelRef.current + 1));
         }, 1200);
@@ -424,7 +425,7 @@ export default function useGame({ soundEnabled = true, adsReady = false } = {}) 
         playFailed();
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
         setPhase('failed');
-        announceIOS('Out of moves!');
+        announceIOS(t('end.outOfMovesA11y'));
         setTimeout(() => endRescueGame(), 1500);
       } else {
         setPhase('playing');
@@ -441,7 +442,7 @@ export default function useGame({ soundEnabled = true, adsReady = false } = {}) 
       setPhase('cleared');
       playClear();
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      announceIOS(`Level complete! ${stars} out of 3 stars.`);
+      announceIOS(t('end.levelCompleteAnnounce', { stars }));
       setTimeout(() => {
         trackLevelClear(() => startNewLevel(levelRef.current + 1));
       }, 1200);
@@ -449,7 +450,7 @@ export default function useGame({ soundEnabled = true, adsReady = false } = {}) 
       playFailed();
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
       setPhase('failed');
-      announceIOS('Out of moves!');
+      announceIOS(t('end.outOfMovesA11y'));
       setTimeout(() => endGame(), 1500);
     } else {
       setPhase('playing');
@@ -492,7 +493,7 @@ export default function useGame({ soundEnabled = true, adsReady = false } = {}) 
     if (comboTier > 0) {
       playCombo();
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
-      announceIOS(COMBO_LABELS[comboTier]);
+      announceIOS(t(`combo.label.${comboTier}`));
     } else {
       playSwap();
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);

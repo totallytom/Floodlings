@@ -1,17 +1,11 @@
-import React, { useRef, useEffect } from 'react';
+import React, { useRef, useEffect, useMemo } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, AccessibilityInfo, Platform, findNodeHandle } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-
-function Stat({ label, value, accent }) {
-  return (
-    <View style={styles.stat}>
-      <Text style={styles.statLabel}>{label}</Text>
-      <Text style={[styles.statValue, accent && styles.statAccent]}>{value}</Text>
-    </View>
-  );
-}
+import { t } from '../i18n';
+import { DISPLAY_FONT, lineHeightFor } from '../fonts';
 
 export default function GameOverScreen({ mode = 'levels', score, highScore, level, onPlayAgain, onHome, onContinue, canContinue }) {
+  const styles = useMemo(createStyles, []);
   const isNewRecord = score > 0 && score >= highScore;
   // Levels/Rescue keep a checkpoint, so "again" means this level, not level 1.
   const isLevelBased = mode === 'levels' || mode === 'rescue';
@@ -25,7 +19,7 @@ export default function GameOverScreen({ mode = 'levels', score, highScore, leve
     // an explicit announcement. Delayed slightly so it doesn't collide with VoiceOver
     // reading the "GAME OVER" heading focused just above.
     if (isNewRecord && Platform.OS === 'ios') {
-      const timer = setTimeout(() => AccessibilityInfo.announceForAccessibility('New record!'), 700);
+      const timer = setTimeout(() => AccessibilityInfo.announceForAccessibility(t('over.newRecordA11y')), 700);
       return () => clearTimeout(timer);
     }
   }, []);
@@ -34,34 +28,34 @@ export default function GameOverScreen({ mode = 'levels', score, highScore, leve
     <SafeAreaView style={styles.safe}>
       <View style={styles.container}>
         <Text ref={headingRef} accessibilityRole="header" style={styles.title}>
-          {mode === 'free' ? "TIME'S\nUP!" : 'GAME\nOVER'}
+          {mode === 'free' ? t('over.timesUp') : t('over.gameOver')}
         </Text>
 
         {isNewRecord && (
           <Text
             style={styles.newRecord}
             accessibilityLiveRegion="assertive"
-            accessibilityLabel="New record!"
-          >✦ NEW RECORD ✦</Text>
+            accessibilityLabel={t('over.newRecordA11y')}
+          >{t('over.newRecord')}</Text>
         )}
 
         <View style={styles.statsBox}>
-          <View accessible={true} accessibilityLabel={`Score: ${score.toLocaleString()}`} style={styles.stat}>
-            <Text accessible={false} style={styles.statLabel}>SCORE</Text>
+          <View accessible={true} accessibilityLabel={t('a11y.score', { score: score.toLocaleString() })} style={styles.stat}>
+            <Text accessible={false} style={styles.statLabel}>{t('common.score')}</Text>
             <Text accessible={false} style={[styles.statValue, styles.statAccent]}>{score.toLocaleString()}</Text>
           </View>
           <View accessible={false} style={styles.divider} />
           {(mode === 'levels' || mode === 'rescue') && (
             <>
-              <View accessible={true} accessibilityLabel={`Level reached: ${level}`} style={styles.stat}>
-                <Text accessible={false} style={styles.statLabel}>LEVEL REACHED</Text>
+              <View accessible={true} accessibilityLabel={t('over.levelReachedA11y', { n: level })} style={styles.stat}>
+                <Text accessible={false} style={styles.statLabel}>{t('over.levelReached')}</Text>
                 <Text accessible={false} style={styles.statValue}>{level}</Text>
               </View>
               <View accessible={false} style={styles.divider} />
             </>
           )}
-          <View accessible={true} accessibilityLabel={`Best score: ${highScore.toLocaleString()}`} style={styles.stat}>
-            <Text accessible={false} style={styles.statLabel}>BEST SCORE</Text>
+          <View accessible={true} accessibilityLabel={t('a11y.bestScore', { score: highScore.toLocaleString() })} style={styles.stat}>
+            <Text accessible={false} style={styles.statLabel}>{t('common.bestScore')}</Text>
             <Text accessible={false} style={styles.statValue}>{highScore.toLocaleString()}</Text>
           </View>
         </View>
@@ -72,11 +66,11 @@ export default function GameOverScreen({ mode = 'levels', score, highScore, leve
             onPress={onContinue}
             activeOpacity={0.8}
             accessibilityRole="button"
-            accessibilityLabel="Continue — watch an ad to retry this level and keep your score"
-            accessibilityHint="Retries the level you just failed without resetting your run score"
+            accessibilityLabel={t('over.continueA11y')}
+            accessibilityHint={t('over.continueHint')}
           >
-            <Text style={styles.restoreText}>CONTINUE</Text>
-            <Text style={styles.restoreSubtext}>Watch Ad · Keep Your Score</Text>
+            <Text style={styles.restoreText}>{t('over.continue')}</Text>
+            <Text style={styles.restoreSubtext}>{t('over.continueSub')}</Text>
           </TouchableOpacity>
         )}
 
@@ -85,10 +79,10 @@ export default function GameOverScreen({ mode = 'levels', score, highScore, leve
           onPress={onPlayAgain}
           activeOpacity={0.8}
           accessibilityRole="button"
-          accessibilityLabel={isLevelBased ? `Try again, level ${level}` : 'Play again'}
-          accessibilityHint={isLevelBased ? 'Replays this level with a fresh score - your level progress is kept' : 'Starts a new game'}
+          accessibilityLabel={isLevelBased ? t('over.tryAgainA11y', { n: level }) : t('over.playAgainA11y')}
+          accessibilityHint={isLevelBased ? t('over.tryAgainHint') : t('over.playAgainHint')}
         >
-          <Text style={styles.playAgainText}>{isLevelBased ? `TRY AGAIN · LEVEL ${level}` : 'PLAY AGAIN'}</Text>
+          <Text style={styles.playAgainText}>{isLevelBased ? t('over.tryAgain', { n: level }) : t('over.playAgain')}</Text>
         </TouchableOpacity>
 
         <TouchableOpacity
@@ -96,18 +90,21 @@ export default function GameOverScreen({ mode = 'levels', score, highScore, leve
           onPress={onHome}
           activeOpacity={0.7}
           accessibilityRole="button"
-          accessibilityLabel="Home"
-          accessibilityHint="Returns to the main menu"
+          accessibilityLabel={t('over.homeA11y')}
+          accessibilityHint={t('over.homeHint')}
           hitSlop={{ top: 6, bottom: 6, left: 10, right: 10 }}
         >
-          <Text style={styles.homeText}>HOME</Text>
+          <Text style={styles.homeText}>{t('over.home')}</Text>
         </TouchableOpacity>
       </View>
     </SafeAreaView>
   );
 }
 
-const styles = StyleSheet.create({
+// Built per mount, not at module load, so it picks up the font of the language
+// active at the time (see fonts.js).
+function createStyles() {
+  return StyleSheet.create({
   safe: {
     flex: 1,
     backgroundColor: '#1B0E33',
@@ -120,7 +117,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 28,
   },
   title: {
-    fontFamily: 'BadUnicorn',
+    fontFamily: DISPLAY_FONT,
     fontSize: 56,
     color: '#FF2D55',
     letterSpacing: 6,
@@ -132,8 +129,9 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 0 },
   },
   newRecord: {
-    fontFamily: 'BadUnicorn',
+    fontFamily: DISPLAY_FONT,
     fontSize: 16,
+    lineHeight: lineHeightFor(16),
     color: '#FF9F0A',
     letterSpacing: 4,
   },
@@ -158,21 +156,24 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   statLabel: {
-    fontFamily: 'BadUnicorn',
+    fontFamily: DISPLAY_FONT,
     // Was #444455 - failed WCAG AA badly (1.96:1) against the near-black stats card.
     color: '#9A9AB0',
     fontSize: 12,
+    lineHeight: lineHeightFor(12),
     letterSpacing: 2,
   },
   statValue: {
-    fontFamily: 'BadUnicorn',
+    fontFamily: DISPLAY_FONT,
     color: '#FFFFFF',
     fontSize: 22,
+    lineHeight: lineHeightFor(22),
   },
   statAccent: {
-    fontFamily: 'BadUnicorn',
+    fontFamily: DISPLAY_FONT,
     color: '#FF9F0A',
     fontSize: 32,
+    lineHeight: lineHeightFor(32),
   },
   restoreBtn: {
     backgroundColor: '#1C1C2E',
@@ -186,14 +187,16 @@ const styles = StyleSheet.create({
     gap: 4,
   },
   restoreText: {
-    fontFamily: 'BadUnicorn',
+    fontFamily: DISPLAY_FONT,
     fontSize: 20,
+    lineHeight: lineHeightFor(20),
     color: '#FF9F0A',
     letterSpacing: 5,
   },
   restoreSubtext: {
-    fontFamily: 'BadUnicorn',
+    fontFamily: DISPLAY_FONT,
     fontSize: 12,
+    lineHeight: lineHeightFor(12),
     color: '#886600',
     letterSpacing: 1,
   },
@@ -211,8 +214,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   playAgainText: {
-    fontFamily: 'BadUnicorn',
+    fontFamily: DISPLAY_FONT,
     fontSize: 20,
+    lineHeight: lineHeightFor(20),
     color: '#FFFFFF',
     letterSpacing: 5,
   },
@@ -220,10 +224,12 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
   },
   homeText: {
-    fontFamily: 'BadUnicorn',
+    fontFamily: DISPLAY_FONT,
     // Was #444455 - failed WCAG AA (2.07:1) against the near-black background.
     color: '#9A9AB0',
     fontSize: 15,
+    lineHeight: lineHeightFor(15),
     letterSpacing: 4,
   },
 });
+}

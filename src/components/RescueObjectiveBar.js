@@ -1,131 +1,220 @@
-import React, { useRef, useEffect, useMemo } from 'react';
-import { View, Text, Image, Animated, Easing, StyleSheet, Dimensions } from 'react-native';
+import React, { useRef, useEffect, useMemo, useState } from 'react';
+import { View, Text, Image, Animated, Easing, StyleSheet } from 'react-native';
 import { LOW_MOVES_THRESHOLD } from '../constants';
-import { iconForType, nameForType } from '../animals';
+import { iconForType, colorForType } from '../animals';
+import { t } from '../i18n';
 import { useReduceMotion } from '../hooks/useReduceMotion';
 import { useTheme } from '../hooks/useTheme';
+import { rescuePalette, RESCUE_GOLD, RESCUE_VINE } from '../modeThemes';
+import { DISPLAY_FONT, lineHeightFor } from '../fonts';
 
-const NORMAL_HEIGHT = 5;
-const URGENT_HEIGHT = 12;
-const CALM_OPACITY = 0.55;
-const TRACK_WIDTH = Dimensions.get('window').width - 32;
+const PORTRAIT = 42;
 
-// Same progress-bar treatment as ObjectiveBar, but counting rescued animals of a
-// specific species instead of points - Species Rescue's objective is "how many",
-// not "how much".
+// Species Rescue's "mission panel": the target animal's portrait, a count of
+// how many have been rescued, and a vine-style progress bar. Kept to roughly
+// the same height as the plain ObjectiveBar - the board is height-bound on
+// phones, so a taller panel here would shrink every tile.
 export default function RescueObjectiveBar({ rescueCount, targetCount, targetType, movesLeft }) {
   const theme = useTheme();
-  const styles = useMemo(() => createStyles(theme), [theme]);
+  const palette = rescuePalette(theme);
+  const styles = useMemo(() => createStyles(palette), [palette]);
   const reduceMotion = useReduceMotion();
   const progress = useRef(new Animated.Value(0)).current;
-  const height = useRef(new Animated.Value(NORMAL_HEIGHT)).current;
-  const opacity = useRef(new Animated.Value(CALM_OPACITY)).current;
-  const pulseLoopRef = useRef(null);
+  const urgentPulse = useRef(new Animated.Value(0)).current;
+  const portraitBounce = useRef(new Animated.Value(1)).current;
+  const gainAnim = useRef(new Animated.Value(0)).current;
+  const [gain, setGain] = useState(0);
+  const prevCountRef = useRef(rescueCount);
 
   const isUrgent = movesLeft <= LOW_MOVES_THRESHOLD;
   const fraction = Math.min(1, rescueCount / targetCount);
-  const animalName = nameForType(targetType);
+  const complete = rescueCount >= targetCount;
 
   useEffect(() => {
     Animated.timing(progress, {
       toValue: fraction,
-      duration: 350,
-      easing: Easing.out(Easing.quad),
+      duration: reduceMotion ? 1 : 450,
+      easing: Easing.out(Easing.cubic),
       useNativeDriver: false,
     }).start();
-  }, [fraction]);
+  }, [fraction, reduceMotion]);
+
+  // Each rescue: the portrait hops and a "+N" floats off it. A drop in count
+  // means a new level started, which just resets silently.
+  useEffect(() => {
+    const delta = rescueCount - prevCountRef.current;
+    prevCountRef.current = rescueCount;
+    if (delta <= 0) return;
+    setGain(delta);
+    if (reduceMotion) return;
+    portraitBounce.setValue(1.35);
+    Animated.spring(portraitBounce, { toValue: 1, friction: 3, tension: 160, useNativeDriver: true }).start();
+    gainAnim.setValue(0);
+    Animated.timing(gainAnim, { toValue: 1, duration: 900, easing: Easing.out(Easing.quad), useNativeDriver: true }).start();
+  }, [rescueCount]);
 
   useEffect(() => {
-    if (pulseLoopRef.current) {
-      pulseLoopRef.current.stop();
-      pulseLoopRef.current = null;
+    if (!isUrgent || reduceMotion) {
+      // Reduce Motion: hold the red border solid instead of pulsing it.
+      urgentPulse.setValue(isUrgent ? 1 : 0);
+      return;
     }
-
-    Animated.timing(height, {
-      toValue: isUrgent ? URGENT_HEIGHT : NORMAL_HEIGHT,
-      duration: 250,
-      useNativeDriver: false,
-    }).start();
-
-    if (isUrgent && !reduceMotion) {
-      const loop = Animated.loop(
-        Animated.sequence([
-          Animated.timing(opacity, { toValue: 0.4, duration: 350, useNativeDriver: false }),
-          Animated.timing(opacity, { toValue: 1, duration: 350, useNativeDriver: false }),
-        ])
-      );
-      pulseLoopRef.current = loop;
-      loop.start();
-    } else {
-      // Reduce Motion: skip the pulse and just hold it fully opaque so urgency is
-      // still conveyed (taller + solid) without the rhythmic flashing.
-      Animated.timing(opacity, { toValue: isUrgent ? 1 : CALM_OPACITY, duration: 250, useNativeDriver: false }).start();
-    }
-
-    return () => {
-      if (pulseLoopRef.current) pulseLoopRef.current.stop();
-    };
+    const loop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(urgentPulse, { toValue: 1, duration: 350, useNativeDriver: true }),
+        Animated.timing(urgentPulse, { toValue: 0.3, duration: 350, useNativeDriver: true }),
+      ])
+    );
+    loop.start();
+    return () => loop.stop();
   }, [isUrgent, reduceMotion]);
 
-  const width = progress.interpolate({
-    inputRange: [0, 0.25, 0.5, 1],
-    outputRange: [0, TRACK_WIDTH * 0.25, TRACK_WIDTH * 0.5, TRACK_WIDTH],
-  });
-
-  const backgroundColor = progress.interpolate({
-    inputRange: [0, 0.25, 0.5, 1],
-    outputRange: ['#FF2D55', '#FF2D55', '#FF9F0A', '#30D158'],
-  });
+  const fillWidth = progress.interpolate({ inputRange: [0, 1], outputRange: ['0%', '100%'] });
 
   return (
-    <View style={styles.container}>
-      <View style={styles.headerRow}>
-        <Image source={iconForType(targetType)} style={styles.animalIcon} />
-        <Text accessible={false} style={styles.progressText} maxFontSizeMultiplier={1.5}>
-          {rescueCount} / {targetCount} {animalName}s
-        </Text>
+    <View style={styles.panel}>
+      <Animated.View pointerEvents="none" style={[styles.urgentRing, { opacity: urgentPulse }]} />
+
+      <View>
+        <Animated.View
+          style={[
+            styles.portrait,
+            { borderColor: complete ? RESCUE_GOLD : colorForType(targetType), transform: [{ scale: portraitBounce }] },
+          ]}
+        >
+          <Image source={iconForType(targetType)} style={styles.portraitIcon} />
+        </Animated.View>
+        {!reduceMotion && gain > 0 && (
+          <Animated.Text
+            pointerEvents="none"
+            accessible={false}
+            allowFontScaling={false}
+            style={[
+              styles.gain,
+              {
+                opacity: gainAnim.interpolate({ inputRange: [0, 0.15, 0.7, 1], outputRange: [0, 1, 1, 0] }),
+                transform: [{ translateY: gainAnim.interpolate({ inputRange: [0, 1], outputRange: [0, -26] }) }],
+              },
+            ]}
+          >
+            +{gain}
+          </Animated.Text>
+        )}
       </View>
-      <Animated.View
-        style={[styles.track, { height, opacity }]}
-        accessible={true}
-        accessibilityRole="progressbar"
-        accessibilityLabel={`${rescueCount} of ${targetCount} ${animalName}s rescued`}
-        accessibilityValue={{ min: 0, max: targetCount, now: Math.min(rescueCount, targetCount) }}
-      >
-        <Animated.View accessible={false} style={[styles.fill, { width, backgroundColor }]} />
-      </Animated.View>
+
+      <View style={styles.body}>
+        <View style={styles.titleRow}>
+          <Text accessible={false} style={styles.missionLabel} maxFontSizeMultiplier={1.3}>
+            {complete ? t('rescue.complete') : t('rescue.mission')}
+          </Text>
+          <Text accessible={false} style={styles.count} maxFontSizeMultiplier={1.3}>
+            <Text style={styles.countNow}>{Math.min(rescueCount, targetCount)}</Text> / {targetCount} {t('rescue.countSuffix', { type: targetType })}
+          </Text>
+        </View>
+        <View
+          style={styles.track}
+          accessible={true}
+          accessibilityRole="progressbar"
+          accessibilityLabel={t('rescue.progressA11y', { count: rescueCount, target: targetCount, type: targetType })}
+          accessibilityValue={{ min: 0, max: targetCount, now: Math.min(rescueCount, targetCount) }}
+        >
+          <Animated.View style={[styles.fill, { width: fillWidth, backgroundColor: complete ? RESCUE_GOLD : RESCUE_VINE }]}>
+            <View style={styles.fillShine} />
+          </Animated.View>
+          {/* Leaf "knob" riding the end of the vine. */}
+          <Animated.Text
+            accessible={false}
+            allowFontScaling={false}
+            style={[styles.leaf, { left: fillWidth }]}
+          >
+            {complete ? '⭐' : '🍃'}
+          </Animated.Text>
+        </View>
+      </View>
     </View>
   );
 }
 
-function createStyles(theme) {
+function createStyles(palette) {
   return StyleSheet.create({
-    container: {
-      marginHorizontal: 16,
-      marginTop: 4,
-    },
-    headerRow: {
+    panel: {
       flexDirection: 'row',
       alignItems: 'center',
-      justifyContent: 'flex-end',
-      gap: 6,
-      marginBottom: 3,
+      gap: 12,
+      marginHorizontal: 16,
+      marginTop: 4,
+      paddingVertical: 6,
+      paddingHorizontal: 10,
+      borderRadius: 16,
+      backgroundColor: palette.panel,
+      borderWidth: 1,
+      borderColor: palette.panelBorder,
+      borderBottomWidth: 3,
     },
-    animalIcon: {
-      width: 18,
-      height: 18,
+    urgentRing: {
+      ...StyleSheet.absoluteFillObject,
+      borderRadius: 16,
+      borderWidth: 2,
+      borderColor: '#FF2D55',
+    },
+    portrait: {
+      width: PORTRAIT,
+      height: PORTRAIT,
+      borderRadius: PORTRAIT / 2,
+      borderWidth: 3,
+      backgroundColor: '#FFFFFF',
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    portraitIcon: {
+      width: PORTRAIT * 0.72,
+      height: PORTRAIT * 0.72,
       resizeMode: 'contain',
     },
-    progressText: {
-      fontFamily: 'BadUnicorn',
+    gain: {
+      position: 'absolute',
+      top: -6,
+      right: -14,
+      fontFamily: DISPLAY_FONT,
+      fontSize: 18,
+      lineHeight: lineHeightFor(18),
+      color: RESCUE_GOLD,
+      textShadowColor: 'rgba(0, 0, 0, 0.8)',
+      textShadowOffset: { width: 0, height: 1 },
+      textShadowRadius: 3,
+    },
+    body: {
+      flex: 1,
+      gap: 5,
+    },
+    titleRow: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'baseline',
+    },
+    // Panel fills are dark green in both modes, so light text is fixed here.
+    missionLabel: {
+      fontFamily: DISPLAY_FONT,
+      fontSize: 12,
+      lineHeight: lineHeightFor(12),
+      color: '#BFE5C9',
+      letterSpacing: 2,
+    },
+    count: {
+      fontFamily: DISPLAY_FONT,
       fontSize: 14,
-      color: theme.textSecondary,
+      lineHeight: lineHeightFor(14),
+      color: '#FFFFFF',
+    },
+    countNow: {
+      fontSize: 18,
+      color: RESCUE_GOLD,
     },
     track: {
-      backgroundColor: '#1C1C2E',
+      height: 12,
       borderRadius: 6,
-      marginVertical: 4,
-      overflow: 'hidden',
+      backgroundColor: 'rgba(0, 0, 0, 0.35)',
+      justifyContent: 'center',
     },
     fill: {
       position: 'absolute',
@@ -133,6 +222,16 @@ function createStyles(theme) {
       bottom: 0,
       left: 0,
       borderRadius: 6,
+      overflow: 'hidden',
+    },
+    fillShine: {
+      height: '45%',
+      backgroundColor: 'rgba(255, 255, 255, 0.3)',
+    },
+    leaf: {
+      position: 'absolute',
+      marginLeft: -9,
+      fontSize: 16,
     },
   });
 }

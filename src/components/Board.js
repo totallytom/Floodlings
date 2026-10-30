@@ -4,6 +4,7 @@ import { iconForType, colorForType } from '../animals';
 import { swapCells } from '../gameLogic';
 import { useReduceMotion } from '../hooks/useReduceMotion';
 import MatchBurst, { MATCH_FX_LIFETIME_MS } from './MatchFX';
+import { t } from '../i18n';
 
 const PADDING = 16;
 const GAP = 4;
@@ -27,7 +28,7 @@ function boardToTiles(board, enterRowMap) {
   return tiles;
 }
 
-function Tile({ id, type, row, col, tileSize, popping, shakeNonce, active, reduceMotion, enterFromRow, onSwipe }) {
+function Tile({ id, type, row, col, tileSize, popping, shakeNonce, active, reduceMotion, enterFromRow, onSwipe, target, targetPulse }) {
   const pos = useRef(new Animated.ValueXY({ x: col * (tileSize + GAP), y: (enterFromRow ?? row) * (tileSize + GAP) })).current;
   const scale = useRef(new Animated.Value(1)).current;
   // Two tiles swapping places move in a straight line directly toward each
@@ -36,6 +37,10 @@ function Tile({ id, type, row, col, tileSize, popping, shakeNonce, active, reduc
   // change - swap, fall, or revert) leaves a visible gap between tiles even
   // when their centers coincide, so they can touch without visually colliding.
   const transitScale = useRef(new Animated.Value(1)).current;
+  // Built once - a fresh Animated.multiply node every render can leave a
+  // natively-driven tile showing a stale mid-animation scale until its next
+  // re-render (seen as tiles stuck small on the level intro until Start).
+  const combinedScale = useRef(Animated.multiply(scale, transitScale)).current;
   const opacity = useRef(new Animated.Value(1)).current;
   const shakeX = useRef(new Animated.Value(0)).current;
   const activeRef = useRef(active);
@@ -52,9 +57,23 @@ function Tile({ id, type, row, col, tileSize, popping, shakeNonce, active, reduc
     prevTileSizeRef.current = tileSize;
     pos.stopAnimation();
     pos.setValue({ x: col * (tileSize + GAP), y: row * (tileSize + GAP) });
+    // Stopping `pos` also stops the in-transit shrink running in parallel with
+    // it (Animated.parallel stops together), which would otherwise leave the
+    // tile frozen part-shrunk until it next moves - visible on level open,
+    // where this resize lands mid-way through the tiles' mount animation.
+    transitScale.stopAnimation();
+    transitScale.setValue(1);
   }, [tileSize]);
 
+  const mountedRef = useRef(false);
   useEffect(() => {
+    // A tile that mounts already in its slot (a fresh board) has nowhere to
+    // travel, so skip the in-transit shrink entirely. Tiles dropping in from
+    // above (enterFromRow) still animate.
+    if (!mountedRef.current) {
+      mountedRef.current = true;
+      if (enterFromRow == null) return;
+    }
     const duration = reduceMotion ? 1 : SWAP_SETTLE_MS;
     Animated.parallel([
       Animated.timing(pos, {
@@ -134,7 +153,7 @@ function Tile({ id, type, row, col, tileSize, popping, shakeNonce, active, reduc
         {
           width: tileSize,
           height: tileSize,
-          transform: [...pos.getTranslateTransform(), { translateX: shakeX }, { scale: Animated.multiply(scale, transitScale) }],
+          transform: [...pos.getTranslateTransform(), { translateX: shakeX }, { scale: combinedScale }],
           opacity,
         },
       ]}
@@ -159,12 +178,39 @@ function Tile({ id, type, row, col, tileSize, popping, shakeNonce, active, reduc
           accessible={false}
         />
       </View>
+      {target && (
+        <Animated.View
+          pointerEvents="none"
+          style={[
+            styles.targetRing,
+            { width: tileSize, height: tileSize, borderRadius: tileSize * 0.26, opacity: targetPulse },
+          ]}
+        />
+      )}
     </Animated.View>
   );
 }
 
-export default function Board({ board, movesLeft, phase, paused, pendingResolution, onSwap, onResolutionDone, onCascadeStep, maxWidth, maxHeight }) {
+export default function Board({ board, movesLeft, phase, paused, pendingResolution, onSwap, onResolutionDone, onCascadeStep, maxWidth, maxHeight, highlightType = null }) {
   const reduceMotion = useReduceMotion();
+  // One shared value drives every highlighted tile's ring (Species Rescue's
+  // target animal), so a board full of targets is still a single animation.
+  const targetPulse = useRef(new Animated.Value(1)).current;
+
+  useEffect(() => {
+    if (highlightType == null || reduceMotion) {
+      targetPulse.setValue(1);
+      return;
+    }
+    const loop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(targetPulse, { toValue: 0.35, duration: 700, easing: Easing.inOut(Easing.quad), useNativeDriver: true }),
+        Animated.timing(targetPulse, { toValue: 1, duration: 700, easing: Easing.inOut(Easing.quad), useNativeDriver: true }),
+      ])
+    );
+    loop.start();
+    return () => loop.stop();
+  }, [highlightType, reduceMotion]);
   const [fx, setFx] = useState([]);
   const fxKeyRef = useRef(0);
   const [optimisticBoard, setOptimisticBoard] = useState(null);
@@ -232,7 +278,8 @@ export default function Board({ board, movesLeft, phase, paused, pendingResoluti
         const cells = step.matchedCells.map(([r, c]) => ({
           x: c * (tileSize + GAP) + tileSize / 2,
           y: r * (tileSize + GAP) + tileSize / 2,
-          color: colorForType(before[r][c].type),
+          // Rescued target animals burst in gold so rescues stand out.
+          color: before[r][c].type === highlightType ? '#FFD60A' : colorForType(before[r][c].type),
         }));
         setFx(list => [...list, { key, cells, value: step.scoreGained, cascadeIndex: step.cascadeIndex }]);
         // Not tied to `cancelled` - an effect that's already on screen should
@@ -276,7 +323,7 @@ export default function Board({ board, movesLeft, phase, paused, pendingResoluti
     <View
       style={[styles.grid, { width: boardPixelWidth, height: boardPixelHeight }]}
       accessible={true}
-      accessibilityLabel={`Zoo match 3 board, ${movesLeft} moves left`}
+      accessibilityLabel={t('board.a11y', { n: movesLeft })}
       accessibilityRole="image"
     >
       {tiles.map(t => (
@@ -289,6 +336,8 @@ export default function Board({ board, movesLeft, phase, paused, pendingResoluti
           tileSize={tileSize}
           reduceMotion={reduceMotion}
           active={active}
+          target={t.type === highlightType}
+          targetPulse={targetPulse}
           enterFromRow={t.enterFromRow}
           popping={poppingKeys.has(`${t.row},${t.col}`)}
           shakeNonce={
@@ -332,6 +381,17 @@ const styles = StyleSheet.create({
     borderBottomColor: 'rgba(0, 0, 0, 0.22)',
     borderTopWidth: 1,
     borderTopColor: 'rgba(255, 255, 255, 0.45)',
+  },
+  targetRing: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    borderWidth: 2.5,
+    borderColor: '#FFD60A',
+    shadowColor: '#FFD60A',
+    shadowOpacity: 0.9,
+    shadowRadius: 5,
+    shadowOffset: { width: 0, height: 0 },
   },
   shine: {
     position: 'absolute',

@@ -1,11 +1,12 @@
-import { useEffect, useState } from 'react';
-import { AppState } from 'react-native';
-import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { Fragment, useEffect, useState } from 'react';
+import { AppState, Image } from 'react-native';
+import { SafeAreaProvider, initialWindowMetrics } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import MobileAds, { AdsConsent } from 'react-native-google-mobile-ads';
 import { requestTrackingPermissionsAsync } from 'expo-tracking-transparency';
-import { useFonts } from 'expo-font';
 import { useSettings } from './src/hooks/useSettings';
+import { useLanguage } from './src/hooks/useLanguage';
+import { ANIMALS } from './src/animals';
 import { ThemeProvider } from './src/hooks/useTheme';
 import useGame from './src/hooks/useGame';
 import HomeScreen from './src/screens/HomeScreen';
@@ -14,10 +15,23 @@ import GameOverScreen from './src/screens/GameOverScreen';
 
 export default function App() {
   const settings = useSettings();
+  const language = useLanguage();
+  const fontsLoaded = language.ready;
   const [adsReady, setAdsReady] = useState(false);
-  const [fontsLoaded] = useFonts({
-    BadUnicorn: require('./assets/fonts/BadUnicornDemoRegular-BVWx.ttf'),
-  });
+  // Lives here rather than in HomeScreen so the Settings sheet stays open when
+  // a language switch remounts the screens.
+  const [settingsOpen, setSettingsOpen] = useState(false);
+
+  // Warm the image cache with the animal art at launch, so the first board and
+  // the Rescue mission portrait don't wait on it. Matters most in dev builds,
+  // where each image is fetched from the Metro server on first use; in release
+  // builds they're local files and this is near-instant.
+  useEffect(() => {
+    for (const animal of ANIMALS) {
+      const { uri } = Image.resolveAssetSource(animal.icon);
+      Image.prefetch(uri).catch(() => {});
+    }
+  }, []);
   const game = useGame({
     soundEnabled: settings.soundEnabled,
     adsReady,
@@ -91,8 +105,16 @@ export default function App() {
 
   return (
     <ThemeProvider>
-      <SafeAreaProvider>
+      {/* initialWindowMetrics gives the real notch/home-indicator insets on the
+          very first frame. Without it insets start at 0 and arrive a frame
+          later, so the game screen's board area shrinks after its first
+          layout and every tile visibly slides into its final row. */}
+      <SafeAreaProvider initialMetrics={initialWindowMetrics}>
         <StatusBar style="light" />
+        {/* Keyed on the language so switching it remounts every screen with
+            fresh text and fonts; game state lives in useGame above, so it's
+            unaffected. */}
+        <Fragment key={language.active}>
         {game.screen === 'home' && (
           <HomeScreen
             highScore={game.highScore}
@@ -110,8 +132,13 @@ export default function App() {
             onPlayRescue={game.startRescueGame}
             onRestartRescue={game.restartRescueGame}
             rescueProgress={game.rescueProgress}
+            rescueStars={game.rescueStars}
             soundEnabled={settings.soundEnabled}
             toggleSound={settings.toggleSound}
+            settingsOpen={settingsOpen}
+            setSettingsOpen={setSettingsOpen}
+            languageChoice={language.choice}
+            onChangeLanguage={language.changeLanguage}
           />
         )}
         {game.screen === 'game' && (
@@ -156,6 +183,7 @@ export default function App() {
             canContinue={(game.mode === 'levels' || game.mode === 'rescue') && game.canContinue && game.rewLoaded}
           />
         )}
+        </Fragment>
       </SafeAreaProvider>
     </ThemeProvider>
   );
