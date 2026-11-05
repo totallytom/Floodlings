@@ -3,7 +3,7 @@ import { AccessibilityInfo, Platform } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Haptics from 'expo-haptics';
 import { generateBoard, isAdjacent, swapCells, wouldMatch, resolveBoard } from '../gameLogic';
-import { getLevelConfig, getFreeModeConfig, getZenModeConfig, getRescueLevelConfig, FREE_MODE_SECONDS, starsForScore, LOW_MOVES_THRESHOLD, isGreatMove } from '../constants';
+import { getLevelConfig, getFreeModeConfig, getZenModeConfig, getRescueLevelConfig, FREE_MODE_SECONDS, starsForScore, LOW_MOVES_THRESHOLD, isGreatMove, CONTINUE_EXTRA_MOVES } from '../constants';
 import { t } from '../i18n';
 import { useGameSounds } from './useGameSounds';
 import { useAds } from './useAds';
@@ -215,6 +215,7 @@ export default function useGame({ soundEnabled = true, adsReady = false } = {}) 
     // before the timer on your attention starts.
     setPhase('intro');
     setPendingResolution(null);
+    setCanContinue(true); // the +moves continue is offered once per level
     saveBestLevel(lvl);
     saveProgress('levels', lvl, runScore);
   }, [saveBestLevel, saveProgress]);
@@ -275,6 +276,7 @@ export default function useGame({ soundEnabled = true, adsReady = false } = {}) 
     // how many they need before the move count starts ticking down.
     setPhase('intro');
     setPendingResolution(null);
+    setCanContinue(true); // the +moves continue is offered once per level
     saveRescueBestLevel(lvl);
     saveProgress('rescue', lvl, runScore);
   }, [saveRescueBestLevel, saveProgress]);
@@ -360,17 +362,27 @@ export default function useGame({ soundEnabled = true, adsReady = false } = {}) 
     setScreen('game');
   }, [startNewLevel]);
 
+  // Rewarded continue: +CONTINUE_EXTRA_MOVES on the SAME board, keeping this level's
+  // score/rescue count, so the player can finish the level they nearly beat. (It used
+  // to restart the level from scratch, which was barely better than the free Try
+  // Again, so few players had a reason to watch the ad.) Works for Levels and Rescue
+  // alike - the board, levelScore and rescueCount are all still in state after a fail.
+  // Only spent once the reward is actually earned, so closing the ad early keeps the
+  // offer; startNewLevel/startRescueLevel re-arm it, making it once per level.
   const onContinue = useCallback(() => {
-    setCanContinue(false);
     showRewarded(() => {
+      setCanContinue(false);
+      setMovesLeft(CONTINUE_EXTRA_MOVES);
+      movesLeftRef.current = CONTINUE_EXTRA_MOVES;
+      setCombo(0);
+      setStreak(0);
+      streakRef.current = 0;
+      setPendingResolution(null);
       setPaused(false);
-      // Mode-aware: Rescue mode's fail state can reach here too, and it needs its
-      // own starter (Rescue's config/board shape), not Levels'.
-      if (modeRef.current === 'rescue') startRescueLevel(levelRef.current);
-      else startNewLevel(levelRef.current);
+      setPhase('playing');
       setScreen('game');
     });
-  }, [startNewLevel, startRescueLevel, showRewarded]);
+  }, [showRewarded]);
 
   const togglePause = useCallback(() => {
     setPaused(p => !p);

@@ -1,5 +1,8 @@
 export const LOW_MOVES_THRESHOLD = 5;
 
+// Moves granted by the rewarded-ad Continue after running out of moves.
+export const CONTINUE_EXTRA_MOVES = 5;
+
 // Tile size on a phone is governed almost entirely by COLUMN count - the screen
 // is much taller than it is wide, so width is the binding constraint on tile
 // size regardless of how many rows there are. Keep cols low enough that each
@@ -9,19 +12,43 @@ export const LOW_MOVES_THRESHOLD = 5;
 // constraint instead of width).
 const ROW_STRETCH = 1.75;
 
+// maxTarget caps each band's target. Without it, targets kept rising forever while
+// the board, moves and scoring stop changing after level 13, so levels became
+// mathematically out of reach (a simulated player won ~25% of level 25, ~0% of
+// level 40). The caps keep the long tail hard but beatable. Tuned by simulation:
+// run many games per level and aim for roughly 70-85% wins on normal levels.
 const LEVEL_BANDS = [
   { minLevel: 1, maxLevel: 3, cols: 8, numTypes: 4, moves: 20, baseTarget: 1500 },
   { minLevel: 4, maxLevel: 6, cols: 8, numTypes: 5, moves: 22, baseTarget: 2500 },
   { minLevel: 7, maxLevel: 9, cols: 8, numTypes: 5, moves: 24, baseTarget: 3500 },
   { minLevel: 10, maxLevel: 12, cols: 8, numTypes: 6, moves: 26, baseTarget: 4500 },
-  { minLevel: 13, maxLevel: 999, cols: 8, numTypes: 6, moves: 28, baseTarget: 5500 },
+  { minLevel: 13, maxLevel: 999, cols: 8, numTypes: 6, moves: 28, baseTarget: 5500, maxTarget: 10000 },
 ];
+const LEVELS_RHYTHM_FROM = 16;
+
+// Difficulty rhythm for the long tail: every 5th level is a tougher "hard" level
+// and the one right after it is an easier breather, so the plateau doesn't feel
+// flat and a hard level is always followed by a quick win.
+const HARD_LEVEL_MULTIPLIER = 1.15;
+const BREATHER_LEVEL_MULTIPLIER = 0.85;
+
+export function isHardLevel(level, rhythmFrom) {
+  return level >= rhythmFrom && level % 5 === 0;
+}
+
+function applyRhythm(level, target, rhythmFrom) {
+  if (level < rhythmFrom) return target;
+  if (isHardLevel(level, rhythmFrom)) return target * HARD_LEVEL_MULTIPLIER;
+  if (isHardLevel(level - 1, rhythmFrom)) return target * BREATHER_LEVEL_MULTIPLIER;
+  return target;
+}
 
 export function getLevelConfig(level) {
   const band = LEVEL_BANDS.find(b => level >= b.minLevel && level <= b.maxLevel)
     ?? LEVEL_BANDS[LEVEL_BANDS.length - 1];
   const stepsIntoBand = level - band.minLevel;
-  const targetScore = Math.round(band.baseTarget * (1 + stepsIntoBand * 0.15));
+  const rawTarget = Math.min(band.baseTarget * (1 + stepsIntoBand * 0.15), band.maxTarget ?? Infinity);
+  const targetScore = Math.round(applyRhythm(level, rawTarget, LEVELS_RHYTHM_FROM));
   const cols = band.cols;
   const rows = Math.round(cols * ROW_STRETCH);
   return { rows, cols, numTypes: band.numTypes, moves: band.moves, targetScore };
@@ -52,15 +79,19 @@ const RESCUE_LEVEL_BANDS = [
   { minLevel: 1, maxLevel: 3, cols: 8, numTypes: 4, moves: 18, baseTarget: 12 },
   { minLevel: 4, maxLevel: 6, cols: 8, numTypes: 5, moves: 20, baseTarget: 16 },
   { minLevel: 7, maxLevel: 9, cols: 8, numTypes: 5, moves: 22, baseTarget: 20 },
-  { minLevel: 10, maxLevel: 12, cols: 8, numTypes: 6, moves: 24, baseTarget: 24 },
-  { minLevel: 13, maxLevel: 999, cols: 8, numTypes: 6, moves: 26, baseTarget: 28 },
+  // Capped for the same reason as LEVEL_BANDS: uncapped, a simulated player won
+  // ~19% of level 12 and 0% from level 16 on.
+  { minLevel: 10, maxLevel: 12, cols: 8, numTypes: 6, moves: 24, baseTarget: 24, maxTarget: 23 },
+  { minLevel: 13, maxLevel: 999, cols: 8, numTypes: 6, moves: 26, baseTarget: 28, maxTarget: 26 },
 ];
+const RESCUE_RHYTHM_FROM = 15;
 
 export function getRescueLevelConfig(level) {
   const band = RESCUE_LEVEL_BANDS.find(b => level >= b.minLevel && level <= b.maxLevel)
     ?? RESCUE_LEVEL_BANDS[RESCUE_LEVEL_BANDS.length - 1];
   const stepsIntoBand = level - band.minLevel;
-  const targetCount = Math.round(band.baseTarget * (1 + stepsIntoBand * 0.2));
+  const rawTarget = Math.min(band.baseTarget * (1 + stepsIntoBand * 0.2), band.maxTarget ?? Infinity);
+  const targetCount = Math.round(applyRhythm(level, rawTarget, RESCUE_RHYTHM_FROM));
   const cols = band.cols;
   const rows = Math.round(cols * ROW_STRETCH);
   const targetType = (level - 1) % band.numTypes;

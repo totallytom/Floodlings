@@ -2,6 +2,7 @@ import React, { useRef, useEffect, useMemo } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, AccessibilityInfo, Platform, findNodeHandle } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { t } from '../i18n';
+import { CONTINUE_EXTRA_MOVES } from '../constants';
 import { DISPLAY_FONT, lineHeightFor } from '../fonts';
 
 export default function GameOverScreen({ mode = 'levels', score, highScore, level, onPlayAgain, onHome, onContinue, canContinue }) {
@@ -66,11 +67,11 @@ export default function GameOverScreen({ mode = 'levels', score, highScore, leve
             onPress={onContinue}
             activeOpacity={0.8}
             accessibilityRole="button"
-            accessibilityLabel={t('over.continueA11y')}
-            accessibilityHint={t('over.continueHint')}
+            accessibilityLabel={t('over.continueA11y', { n: CONTINUE_EXTRA_MOVES })}
+            accessibilityHint={t('over.continueHint', { n: CONTINUE_EXTRA_MOVES })}
           >
             <Text style={styles.restoreText}>{t('over.continue')}</Text>
-            <Text style={styles.restoreSubtext}>{t('over.continueSub')}</Text>
+            <Text style={styles.restoreSubtext}>{t('over.continueSub', { n: CONTINUE_EXTRA_MOVES })}</Text>
           </TouchableOpacity>
         )}
 
